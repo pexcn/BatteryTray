@@ -59,9 +59,10 @@ cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /Gw /DNDEBU
 - manifest（DPI 感知、`asInvoker`）通过 `src/BatteryTray.rc` 里的
   `1 RT_MANIFEST "BatteryTray.manifest"` 嵌入，随 `rc.exe` 一起编进 `.res`。想给 exe
   加个文件图标，把 `BatteryTray.ico` 放到 `src\` 下，取消 `.rc` 里 `1 ICON` 那行的注释即可。
-- **版本号**：`build.bat` 用 `git describe` 取最近的 `v<major>.<minor>.<patch>` tag，写进
-  `build\version.h` 供 `rc` 嵌入 `VERSIONINFO`。正好落在 tag 上是 `1.2.3`，之后的提交带上
-  距 tag 的提交数（`1.2.3-5`）。上面手写的 `rc` 命令没有这个头文件，版本会落回 `0.0.0`。
+- **版本号**：CI 从 git tag 算出版本，通过 `VERSION` 环境变量传给 `build.bat`，再写进
+  `build\version.h` 供 `rc` 嵌入 `VERSIONINFO`：tag 上是 `1.2.3`，之后的提交带上距 tag 的
+  提交数（`1.2.3-5`）。本地构建没有这个变量，版本就是 `0.0.0`；想要真版本，
+  `set VERSION=1.2.3` 之后再跑 `build.bat`。
 
 ## 使用
 

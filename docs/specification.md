@@ -158,12 +158,14 @@ GitHub Actions（`.github/workflows/build.yml`）在 `windows-latest` 上直接�
 
 ### 7.1 版本号
 
-版本号由 `build.bat` 从 git tag 推导，CI 只负责把 tag 取全，不参与计算：
+版本号在 CI 里算好，用 `VERSION` 环境变量传给 `build.bat`；`build.bat` 只消费不推导，
+拿不到这个变量就是 `0.0.0`（本地构建、源码包直接编译都属于这种情况）。
 
-- tag 形如 `v<major>.<minor>.<patch>`（`git describe --tags --long --match "v*.*.*"`）。
-- 正好落在 tag 上：`1.2.3`；tag 之后的提交带上距离：`1.2.3-5`（5 = 距 tag 的提交数）。
-- 没有 git 或没有 tag（源码包直接编译）：`0.0.0`。
-- 四段数字版本（`VERSIONINFO` 的 `FILEVERSION` / `PRODUCTVERSION`）是 `major,minor,patch,距离`。
-- `build.bat` 把两个宏写进 `build\version.h` 再让 `rc` 带 `/DHAVE_VERSION_H` 包含它；
+- tag 推送（`GITHUB_REF_TYPE == tag`）：直接取 tag 名去掉前缀 `v`，`v1.2.3` → `1.2.3`。
+- 其它推送：`git describe --tags --long --match "v*.*.*"`，去掉 `v` 前缀与结尾的 `-g<sha>`，
+  得到 `1.2.3-5`（5 = 距最近 tag 的提交数）。仓库里一个 tag 都没有时退回 `0.0.0-0`。
+- 四段数字版本（`VERSIONINFO` 的 `FILEVERSION` / `PRODUCTVERSION`）由 `build.bat` 从
+  `VERSION` 拆出，即 `major,minor,patch,距离`，字符串里没有的位补 0。
+- `build.bat` 把两个宏写进 `build\version.h`，再让 `rc` 带 `/DHAVE_VERSION_H` 包含它；
   用生成头文件而不是 `/DVERSION_STR=\"...\"`，是为了躲开 cmd 到 rc 之间的引号转义。
   手动跑 `rc` 不带这个宏也能编译，只是版本落回 `0.0.0`。

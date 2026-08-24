@@ -5,16 +5,12 @@ cd /d "%~dp0"
 where cl >nul 2>nul || call :vcvars || exit /b
 if not exist build mkdir build
 
-rem Version comes from the nearest v<major>.<minor>.<patch> tag: a build sitting
-rem on the tag is 1.2.3, later commits carry the distance to it (1.2.3-5) so CI
-rem builds stay ordered and traceable. No git or no tag falls back to 0.0.0 -
-rem VERSIONINFO wants four numbers regardless.
-set "VERSION=0.0.0"
-set "VERSION_QUAD=0,0,0,0"
-for /f "usebackq tokens=1-4 delims=v.-" %%a in (`git describe --tags --long --match "v*.*.*" 2^>nul`) do (
-    set "VERSION_QUAD=%%a,%%b,%%c,%%d"
-    if "%%d"=="0" (set "VERSION=%%a.%%b.%%c") else (set "VERSION=%%a.%%b.%%c-%%d")
-)
+rem CI derives VERSION from the git tag and hands it in (see
+rem .github\workflows\build.yml); a local build has no tag context, so 0.0.0.
+if not defined VERSION set "VERSION=0.0.0"
+rem VERSIONINFO wants four numbers and VERSION is major.minor.patch[-distance],
+rem so pad the tail: whatever the string omits gets read off the padding as 0.
+for /f "tokens=1-4 delims=.-" %%a in ("%VERSION%.0.0.0-0") do set "VERSION_QUAD=%%a,%%b,%%c,%%d"
 rem A generated header keeps rc away from /D"VERSION_STR=\"1.2.3\"" quoting games.
 (
     echo #define VERSION_QUAD %VERSION_QUAD%

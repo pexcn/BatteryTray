@@ -21,6 +21,18 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Resolve version
+      shell: pwsh
+      run: |
+        $version = if ($env:GITHUB_REF_TYPE -eq 'tag') {
+          $env:GITHUB_REF_NAME -replace '^v', ''
+        } else {
+          $describe = & { $ErrorActionPreference = 'Continue'; git describe --tags --long --match "v*.*.*" 2>$null }
+          if ($describe) { $describe -replace '^v', '' -replace '-g[0-9a-f]+$', '' } else { '0.0.0-0' }
+        }
+        Write-Host "Version: $version"
+        "VERSION=$version" >> $env:GITHUB_ENV
+
     - name: Build
       shell: cmd
       run: build.bat
