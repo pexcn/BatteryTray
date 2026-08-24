@@ -1,6 +1,6 @@
 # BatteryTray 技术规格
 
-`BatteryTray` 是一个 Windows 系统托盘小程序：在任务栏通知区用一个动态生成的图标显示当前电池百分比。
+`BatteryTray`（中文名「电量托盘」）是一个 Windows 系统托盘小程序：在任务栏通知区用一个动态生成的图标显示当前电池百分比。
 本文档描述它的功能规格与实现约束。
 
 程序最初用 C#/.NET Framework 4.8.1 + WinForms 实现，现已重写为**原生 C++（C++23）+ Win32 API**。
@@ -126,6 +126,10 @@
 3. 构建说明：MSVC 命令（见 [1.2](#1-硬性约束最高优先级)：`/O2 /GL /Gw /DNDEBUG /MT` + `/LTCG /OPT:REF,ICF`、UCRT 混合链接、Release 无 PDB）；说明如何嵌入 manifest 与图标资源（`.rc`）。
 4. 简短 README 段落：功能、构建、使用（放进启动文件夹或用菜单「开机启动」）。
 5. 代码注释用英文；只在解释「为什么」（平台怪癖、非显然的取舍）时写注释，不复述代码。
+6. `.rc` 的 `VERSIONINFO`：`FileDescription` 与 `ProductName` 用中文名「电量托盘」，
+   `LegalCopyright` 写 `Copyright © <年> pexcn · GPL-3.0-or-later`（对齐同作者的其它项目）。
+   非 ASCII 文案要求 `.rc` 存成 UTF-8 并在开头写 `#pragma code_page(65001)`，
+   否则 rc.exe 按系统 ANSI 代码页解析，在非中文 Windows 上编出乱码。版本号见 [7.1](#71-版本号)。
 
 ## 5. 风格与工程约束
 

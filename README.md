@@ -1,4 +1,4 @@
-# BatteryTray
+# 电量托盘
 
 ![](BatteryTray.png)
 

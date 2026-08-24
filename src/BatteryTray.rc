@@ -1,3 +1,7 @@
+// The strings below are UTF-8; without this rc.exe reads them in the system
+// ANSI code page and emits mojibake on any non-Chinese Windows.
+#pragma code_page(65001)
+
 #include <windows.h>
 
 // build.bat regenerates build\version.h from the nearest git tag and defines
@@ -31,11 +35,12 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "FileDescription", "Battery percentage in the notification area"
+            VALUE "FileDescription", "电量托盘"
             VALUE "FileVersion", VERSION_STR
             VALUE "InternalName", "BatteryTray"
+            VALUE "LegalCopyright", "Copyright © 2026 pexcn · GPL-3.0-or-later"
             VALUE "OriginalFilename", "BatteryTray.exe"
-            VALUE "ProductName", "BatteryTray"
+            VALUE "ProductName", "电量托盘"
             VALUE "ProductVersion", VERSION_STR
         END
     END
