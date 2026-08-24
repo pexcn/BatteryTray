@@ -9,16 +9,17 @@
     because the CI image is Windows Server, which ships Segoe MDL2 Assets rather
     than Segoe Fluent Icons.
 
-    The glyph is BatteryCharging10 (U+EA93). That codepoint happens to address
-    the same drawing in both symbol fonts -- the other charge levels do not line
-    up -- so the MDL2 fallback below renders the identical shape on Windows 10.
+    The glyph is BatteryCharging7 (U+E861): a battery at roughly 70% with the
+    charging symbol on it. Levels 0 to 8 (U+E85A to U+E862) sit at the same
+    codepoints in both symbol fonts -- only 9 and 10 were moved -- so the MDL2
+    fallback below renders the identical shape on Windows 10.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File tools\make_icon.ps1
 #>
 [CmdletBinding()]
 param(
-    [string]$Glyph = 'EA93',
+    [string]$Glyph = 'E861',
     [string[]]$FontFamily = @('Segoe Fluent Icons', 'Segoe MDL2 Assets'),
     # Mid-tone green: the exe icon sits on both a light Explorer background and a
     # dark Task Manager row, so it has to carry its own contrast either way.

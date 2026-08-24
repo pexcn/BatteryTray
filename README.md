@@ -58,7 +58,7 @@ cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /Gw /DNDEBU
 - `/utf-8` 必须带上：源码里的中文 UI 文案是 UTF-8，缺少它 MSVC 会按 ANSI 代码页解析。
 - manifest（DPI 感知、`asInvoker`）与 exe 的文件图标都通过 `src/BatteryTray.rc` 嵌入
   （`1 RT_MANIFEST` 与 `1 ICON`），随 `rc.exe` 一起编进 `.res`。图标 `src/BatteryTray.ico`
-  由 `tools/make_icon.ps1` 从 Segoe Fluent Icons 的充电电池字形（`U+EA93`）渲染，产物直接进仓库，
+  由 `tools/make_icon.ps1` 从 Segoe Fluent Icons 的充电电池字形（`U+E861`，约七成电量）渲染，产物直接进仓库，
   构建不依赖那个字体；想换字形、配色或尺寸，改参数重跑脚本并把 `.ico` 一起提交：
 
   ```cmd

@@ -132,9 +132,10 @@
    否则 rc.exe 按系统 ANSI 代码页解析，在非中文 Windows 上编出乱码。版本号见 [7.1](#71-版本号)。
 7. **exe 图标资源**（`.rc` 里的 `1 ICON "BatteryTray.ico"`）：资源管理器、任务管理器与快捷方式上显示的
    文件图标。与托盘图标无关 —— 托盘那个仍是运行时按 [2.3](#23-托盘图标内容) 画出来的数字。
-   - **图形来自 Segoe Fluent Icons 的 `BatteryCharging10`（`U+EA93`）字形**，与截图里 Windows 自己的
-     充电电池同源，视觉上和系统一致。这个码位在 Segoe MDL2 Assets 上指向同一张图（其余充电档位两套字体
-     的码位并不对齐），所以只装了 MDL2 的 Windows 10 上也能渲染出相同结果。
+   - **图形来自 Segoe Fluent Icons 的 `BatteryCharging7`（`U+E861`）字形** —— 约七成电量、带充电标记，
+     与截图里 Windows 自己的充电电池同源，视觉上和系统一致。取 7 档而非满格，是因为满格那张图整条都是实心，
+     少了「电量计」的辨识度。充电系列的 0–8 档（`U+E85A`–`U+E862`）在 Segoe MDL2 Assets 上码位完全相同
+     （只有 9、10 两档两套字体不一致），所以只装了 MDL2 的 Windows 10 上也能渲染出相同结果。
    - **由 `tools/make_icon.ps1` 在设计期渲染一次，产物 `src/BatteryTray.ico` 提交进仓库**，构建只消费不生成。
      不放进 `build.bat` 的理由：`rc.exe` 要的就是成品文件，而 CI 的 `windows-latest` 是 Windows Server
      镜像，只有 Segoe MDL2 Assets、没有 Segoe Fluent Icons，构建期渲染会让 CI 与本地产出不同的东西。
