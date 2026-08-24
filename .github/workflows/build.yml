@@ -27,7 +27,9 @@ jobs:
         $version = if ($env:GITHUB_REF_TYPE -eq 'tag') {
           $env:GITHUB_REF_NAME -replace '^v', ''
         } else {
-          $describe = & { $ErrorActionPreference = 'Continue'; git describe --tags --long --match "v*.*.*" 2>$null }
+          $describe = $null
+          try { $describe = git describe --tags --long --match "v*.*.*" 2>$null } catch { }
+          $global:LASTEXITCODE = 0
           if ($describe) { $describe -replace '^v', '' -replace '-g[0-9a-f]+$', '' } else { '0.0.0-0' }
         }
         Write-Host "Version: $version"
