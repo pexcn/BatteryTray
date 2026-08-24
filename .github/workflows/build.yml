@@ -18,14 +18,20 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
 
     - name: Build
       shell: cmd
       run: build.bat
 
+    - name: Stage artifact
+      shell: cmd
+      run: mkdir dist\BatteryTray && copy /y build\BatteryTray.exe dist\BatteryTray\
+
     - name: Upload to Artifact
       uses: actions/upload-artifact@v7
       with:
         name: BatteryTray
-        path: build\BatteryTray.exe
+        path: dist\*
         if-no-files-found: error

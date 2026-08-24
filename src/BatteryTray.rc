@@ -1,5 +1,14 @@
 #include <windows.h>
 
+// build.bat regenerates build\version.h from the nearest git tag and defines
+// HAVE_VERSION_H; running rc.exe by hand without it still compiles, as 0.0.0.
+#ifdef HAVE_VERSION_H
+#include "version.h"
+#else
+#define VERSION_QUAD 0,0,0,0
+#define VERSION_STR "0.0.0"
+#endif
+
 // CREATEPROCESS_MANIFEST_RESOURCE_ID: embedding the manifest is what makes the
 // process DPI aware and keeps it running as the invoking user.
 1 RT_MANIFEST "BatteryTray.manifest"
@@ -10,8 +19,8 @@
 // 1 ICON "BatteryTray.ico"
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,0,0,0
-PRODUCTVERSION 1,0,0,0
+FILEVERSION VERSION_QUAD
+PRODUCTVERSION VERSION_QUAD
 FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
 FILEFLAGS 0
 FILEOS VOS_NT_WINDOWS32
@@ -23,11 +32,11 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "FileDescription", "Battery percentage in the notification area"
-            VALUE "FileVersion", "1.0.0.0"
+            VALUE "FileVersion", VERSION_STR
             VALUE "InternalName", "BatteryTray"
             VALUE "OriginalFilename", "BatteryTray.exe"
             VALUE "ProductName", "BatteryTray"
-            VALUE "ProductVersion", "1.0.0.0"
+            VALUE "ProductVersion", VERSION_STR
         END
     END
     BLOCK "VarFileInfo"

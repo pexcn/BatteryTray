@@ -151,3 +151,19 @@ GitHub Actions（`.github/workflows/build.yml`）在 `windows-latest` 上直接�
   （`build.bat` 自己用 vswhere 找到并调用 `vcvars64.bat`）。这样 CI 与本地构建出的是同一份东西，
   改编译选项只需要改一个地方。
 - 找不到产物要让 CI 失败（`if-no-files-found: error`），不能悄悄上传一个空 artifact。
+- 产物压缩包里要多包一层 `BatteryTray\` 目录：先把 exe 拷进 `dist\BatteryTray\` 再上传 `dist\*`
+  （upload-artifact 以匹配项的公共父目录为压缩包根），下载解压后是一个带名字的文件夹，
+  不是散在下载目录里的裸 exe。
+- checkout 要用 `fetch-depth: 0`，浅克隆没有 tag，下面的版本号就取不到。
+
+### 7.1 版本号
+
+版本号由 `build.bat` 从 git tag 推导，CI 只负责把 tag 取全，不参与计算：
+
+- tag 形如 `v<major>.<minor>.<patch>`（`git describe --tags --long --match "v*.*.*"`）。
+- 正好落在 tag 上：`1.2.3`；tag 之后的提交带上距离：`1.2.3-5`（5 = 距 tag 的提交数）。
+- 没有 git 或没有 tag（源码包直接编译）：`0.0.0`。
+- 四段数字版本（`VERSIONINFO` 的 `FILEVERSION` / `PRODUCTVERSION`）是 `major,minor,patch,距离`。
+- `build.bat` 把两个宏写进 `build\version.h` 再让 `rc` 带 `/DHAVE_VERSION_H` 包含它；
+  用生成头文件而不是 `/DVERSION_STR=\"...\"`，是为了躲开 cmd 到 rc 之间的引号转义。
+  手动跑 `rc` 不带这个宏也能编译，只是版本落回 `0.0.0`。
