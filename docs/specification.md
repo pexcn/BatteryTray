@@ -136,3 +136,13 @@
 - 三个菜单项（电量日志、开机启动、退出）行为正确，勾选状态与实际状态一致。
 - 反复开关日志、切换开机启动、explorer 重启后均不泄漏句柄、不崩溃。
 - 用给出的 MSVC 命令能一次编译出去除了调试信息、无 DLL 依赖的单文件 `percentage.exe`。
+
+## 7. 持续集成
+
+GitHub Actions（`.github/workflows/build.yml`）在 `windows-latest` 上直接调用仓库根的 `build.bat`，
+把 `build\percentage.exe` 作为构建产物上传。
+
+- **构建脚本是唯一事实来源**：CI 不重复一遍 `cl` / `rc` 的参数，也不用第三方的 MSVC 环境配置 action
+  （`build.bat` 自己用 vswhere 找到并调用 `vcvars64.bat`）。这样 CI 与本地构建出的是同一份东西，
+  改编译选项只需要改一个地方。
+- 找不到产物要让 CI 失败（`if-no-files-found: error`），不能悄悄上传一个空 artifact。
