@@ -169,3 +169,13 @@ GitHub Actions（`.github/workflows/build.yml`）在 `windows-latest` 上直接�
 - `build.bat` 把两个宏写进 `build\version.h`，再让 `rc` 带 `/DHAVE_VERSION_H` 包含它；
   用生成头文件而不是 `/DVERSION_STR=\"...\"`，是为了躲开 cmd 到 rc 之间的引号转义。
   手动跑 `rc` 不带这个宏也能编译，只是版本落回 `0.0.0`。
+
+### 7.2 发布
+
+推送 `v` 开头的 tag 时，在上传 artifact 之后多两步：用 `Compress-Archive` 把
+`dist\BatteryTray\` 整个目录压成 `BatteryTray.zip`（压缩包里同样带一层 `BatteryTray\`，
+与 artifact 一致），再由 `softprops/action-gh-release` 建 release 并把 zip 传上去。
+
+- 两步都用 `if: startsWith(github.ref, 'refs/tags/v')` 卡住，普通推送只留 artifact。
+- 建 release 需要写权限，所以工作流的 `permissions` 是 `contents: write`。
+- zip 文件名不带版本号；版本在 release 的 tag 名和 exe 的 `VERSIONINFO` 里都能看到。
