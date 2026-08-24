@@ -1,0 +1,75 @@
+# percentage
+
+![](percentage.png)
+
+在 Windows 通知区域（托盘）显示当前电池百分比。原生 C++ / Win32 实现，单文件
+`percentage.exe`，无第三方依赖、无需安装、不写配置文件。
+
+## 功能
+
+- 托盘图标实时显示电量数字，满电（> 99%）显示 `FL`；图标按当前 DPI 生成，高分屏不糊。
+- 文字颜色跟随系统主题（浅色主题黑字，深色主题白字），启动时读取一次。
+- 事件驱动刷新：通过 `RegisterPowerSettingNotification` 与 `WM_POWERBROADCAST`
+  由系统推送电量与充电状态变化，不轮询，空闲时几乎不占 CPU。
+- 鼠标悬停显示 `正在充电：<n>%` / `使用电池：<n>%`。
+- 右键菜单：
+  - **电量日志**：把每次电量/充电状态变化追加到 exe 同目录的 `percentage.log`
+    （UTF-8，行格式 `[yyyy-MM-dd HH:mm:ss]: 使用电池 -> 87%`）。超过 512 KB 时滚动为
+    `percentage.log.old`，最多保留两个文件。开关不持久化，每次启动默认关闭；exe 所在
+    目录不可写时静默关闭，不会改写到其它目录。
+  - **开机启动**：写入/删除 `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`
+    下的 `percentage` 值，无需管理员权限。每次弹出菜单时按注册表实际状态回填勾选。
+  - **退出**。
+- explorer.exe 重启后自动恢复托盘图标；同一时间只运行一个实例。
+
+## 构建
+
+需要 Visual Studio 2022（或 Build Tools）并勾选「使用 C++ 的桌面开发」。
+
+```cmd
+build.bat
+```
+
+脚本会自己用 vswhere 找到并调用 `vcvars64.bat`，产物在 `build\percentage.exe`。
+在 Developer Command Prompt 里直接手写命令也可以：
+
+```cmd
+rc /nologo /I src /fo build\percentage.res src\percentage.rc
+
+cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /DNDEBUG /MT ^
+   /Fo"build\\" /Fe"build\percentage.exe" ^
+   src\*.cpp build\percentage.res ^
+   /link /LTCG /OPT:REF,ICF /SUBSYSTEM:WINDOWS /RELEASE ^
+   user32.lib gdi32.lib shell32.lib advapi32.lib
+```
+
+说明：
+
+- `/MT` 静态链接 CRT，产物不依赖任何 VC++ 运行时可再发行包；只链接系统库。
+- 不传 `/Zi`、不传 `/DEBUG`，因此 Release 不生成 PDB，可执行文件里没有调试信息。
+- `/GL` + `/LTCG` + `/OPT:REF,ICF` 做全程序优化与冗余消除；如果还要更小，可以进一步
+  考虑绕开 CRT（`/NODEFAULTLIB` + 自定义入口），代价是要自己接管全局初始化，本项目
+  没这么做。
+- `/utf-8` 必须带上：源码里的中文 UI 文案是 UTF-8，缺少它 MSVC 会按 ANSI 代码页解析。
+- manifest（DPI 感知、`asInvoker`）通过 `src/percentage.rc` 里的
+  `1 RT_MANIFEST "percentage.manifest"` 嵌入，随 `rc.exe` 一起编进 `.res`。想给 exe
+  加个文件图标，把 `percentage.ico` 放到 `src\` 下，取消 `.rc` 里 `1 ICON` 那行的注释即可。
+
+## 使用
+
+双击 `percentage.exe` 即可，托盘出现电量数字。想开机自启，用右键菜单里的
+「开机启动」，或者把 exe 放进启动文件夹（Win+R 输入 `shell:startup`）。
+
+## 源码
+
+| 文件 | 职责 |
+| --- | --- |
+| `src/main.cpp` | 隐藏窗口、电源事件、托盘图标与右键菜单 |
+| `src/tray_icon.cpp` | 把电量文字渲染成带 alpha 的 `HICON` |
+| `src/battery_log.cpp` | 电量日志的写入与滚动 |
+| `src/autostart.cpp` | 注册表 `Run` 项的读写 |
+| `src/win32_raii.h` | GDI / 内核句柄的 RAII 包装 |
+
+## 许可证
+
+[GPL-3.0-or-later](LICENSE)

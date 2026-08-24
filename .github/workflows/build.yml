@@ -1,0 +1,24 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Build
+      shell: cmd
+      run: build.bat
+
+    - name: Upload to Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: percentage
+        path: build\percentage.exe

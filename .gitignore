@@ -1,0 +1,14 @@
+# Build output
+build/
+
+# Runtime output of the portable app
+*.log
+*.log.old
+
+# IDE / OS noise
+.vs/
+.idea/
+*.user
+*.suo
+Thumbs.db
+.DS_Store
