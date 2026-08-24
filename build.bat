@@ -8,9 +8,10 @@ if not exist build mkdir build
 rem CI derives VERSION from the git tag and hands it in (see
 rem .github\workflows\build.yml); a local build has no tag context, so 0.0.0.
 if not defined VERSION set "VERSION=0.0.0"
-rem VERSIONINFO wants four numbers and VERSION is major.minor.patch[-distance],
-rem so pad the tail: whatever the string omits gets read off the padding as 0.
-for /f "tokens=1-4 delims=.-" %%a in ("%VERSION%.0.0.0-0") do set "VERSION_QUAD=%%a,%%b,%%c,%%d"
+rem VERSIONINFO wants four numbers and Explorer shows them as the file version,
+rem so the distance stays out of them - 1.0.0.1 would read as a released
+rem revision. Only major.minor.patch carry over, padded for a short VERSION.
+for /f "tokens=1-3 delims=.-" %%a in ("%VERSION%.0.0") do set "VERSION_QUAD=%%a,%%b,%%c,0"
 rem A generated header keeps rc away from /D"VERSION_STR=\"1.2.3\"" quoting games.
 (
     echo #define VERSION_QUAD %VERSION_QUAD%

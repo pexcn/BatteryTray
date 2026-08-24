@@ -187,7 +187,9 @@ GitHub Actions（`.github/workflows/build.yml`）在 `windows-latest` 上直接�
 - 其它推送：`git describe --tags --long --match "v*.*.*"`，去掉 `v` 前缀与结尾的 `-g<sha>`，
   得到 `1.2.3-5`（5 = 距最近 tag 的提交数）。仓库里一个 tag 都没有时退回 `0.0.0-0`。
 - 四段数字版本（`VERSIONINFO` 的 `FILEVERSION` / `PRODUCTVERSION`）由 `build.bat` 从
-  `VERSION` 拆出，即 `major,minor,patch,距离`，字符串里没有的位补 0。
+  `VERSION` 拆出，是 `major,minor,patch,0`：**第四位恒为 0，距离不进四段号**。
+  资源管理器属性页的「文件版本」读的就是这四段，`1.0.0.1` 会被当成发布过的修订号；
+  距离只体现在「产品版本」那一行的字符串（`1.0.0-1`）里。
 - `build.bat` 把两个宏写进 `build\version.h`，再让 `rc` 带 `/DHAVE_VERSION_H` 包含它；
   用生成头文件而不是 `/DVERSION_STR=\"...\"`，是为了躲开 cmd 到 rc 之间的引号转义。
   手动跑 `rc` 不带这个宏也能编译，只是版本落回 `0.0.0`。
