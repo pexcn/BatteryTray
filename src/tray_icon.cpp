@@ -4,7 +4,7 @@
 #include <cwchar>
 #include <vector>
 
-namespace pct {
+namespace bt {
 namespace {
 
 // Widest content the tray ever shows; the font is fitted to these so the icon
@@ -154,4 +154,4 @@ unique_icon IconRenderer::render(std::wstring_view text, UINT dpi) {
     return unique_icon(CreateIconIndirect(&icon_info)); // copies both bitmaps
 }
 
-} // namespace pct
+} // namespace bt

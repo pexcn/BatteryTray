@@ -1,4 +1,4 @@
-// percentage - shows the battery level as a tray icon.
+// BatteryTray - shows the battery level as a tray icon.
 
 #include <initguid.h> // must precede win32.h so the power setting GUIDs get defined here
 
@@ -18,7 +18,7 @@
 
 namespace {
 
-using namespace pct;
+using namespace bt;
 
 constexpr UINT kTrayCallbackMessage = WM_APP + 1;
 constexpr UINT kTrayIconId = 1;
@@ -27,8 +27,8 @@ constexpr int kMenuLog = 1;
 constexpr int kMenuAutostart = 2;
 constexpr int kMenuExit = 3;
 
-constexpr wchar_t kWindowClassName[] = L"percentage.tray";
-constexpr wchar_t kSingletonMutexName[] = L"Local\\percentage.singleton";
+constexpr wchar_t kWindowClassName[] = L"BatteryTray.window";
+constexpr wchar_t kSingletonMutexName[] = L"Local\\BatteryTray.singleton";
 
 // Sent by the shell after explorer restarts; every tray program has to re-add
 // its icon then.
@@ -118,7 +118,7 @@ bool App::create_window() {
     // A real top-level window that is simply never shown. HWND_MESSAGE would be
     // cheaper but message-only windows receive no broadcasts, and both
     // PBT_APMPOWERSTATUSCHANGE and TaskbarCreated arrive that way.
-    window_ = CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClassName, L"percentage", WS_OVERLAPPED, 0, 0, 0, 0,
+    window_ = CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClassName, L"BatteryTray", WS_OVERLAPPED, 0, 0, 0, 0,
                               nullptr, nullptr, instance_, this);
     return window_ != nullptr;
 }

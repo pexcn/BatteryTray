@@ -1,9 +1,9 @@
-# percentage
+# BatteryTray
 
-![](percentage.png)
+![](BatteryTray.png)
 
 在 Windows 通知区域（托盘）显示当前电池百分比。原生 C++ / Win32 实现，单文件
-`percentage.exe`，无第三方依赖、无需安装、不写配置文件。
+`BatteryTray.exe`，无第三方依赖、无需安装、不写配置文件。
 
 ## 功能
 
@@ -13,12 +13,12 @@
   由系统推送电量与充电状态变化，不轮询，空闲时几乎不占 CPU。
 - 鼠标悬停显示 `正在充电：<n>%` / `使用电池：<n>%`。
 - 右键菜单：
-  - **电量日志**：把每次电量/充电状态变化追加到 exe 同目录的 `percentage.log`
+  - **电量日志**：把每次电量/充电状态变化追加到 exe 同目录的 `BatteryTray.log`
     （UTF-8，行格式 `[yyyy-MM-dd HH:mm:ss]: 使用电池 -> 87%`）。超过 512 KB 时滚动为
-    `percentage.log.old`，最多保留两个文件。开关不持久化，每次启动默认关闭；exe 所在
+    `BatteryTray.log.old`，最多保留两个文件。开关不持久化，每次启动默认关闭；exe 所在
     目录不可写时静默关闭，不会改写到其它目录。
   - **开机启动**：写入/删除 `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`
-    下的 `percentage` 值，无需管理员权限。每次弹出菜单时按注册表实际状态回填勾选。
+    下的 `BatteryTray` 值，无需管理员权限。每次弹出菜单时按注册表实际状态回填勾选。
   - **退出**。
 - explorer.exe 重启后自动恢复托盘图标；同一时间只运行一个实例。
 
@@ -30,15 +30,15 @@
 build.bat
 ```
 
-脚本会自己用 vswhere 找到并调用 `vcvars64.bat`，产物在 `build\percentage.exe`。
+脚本会自己用 vswhere 找到并调用 `vcvars64.bat`，产物在 `build\BatteryTray.exe`。
 在 Developer Command Prompt 里直接手写命令也可以：
 
 ```cmd
-rc /nologo /I src /fo build\percentage.res src\percentage.rc
+rc /nologo /I src /fo build\BatteryTray.res src\BatteryTray.rc
 
 cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /DNDEBUG /MT ^
-   /Fo"build\\" /Fe"build\percentage.exe" ^
-   src\*.cpp build\percentage.res ^
+   /Fo"build\\" /Fe"build\BatteryTray.exe" ^
+   src\*.cpp build\BatteryTray.res ^
    /link /LTCG /OPT:REF,ICF /SUBSYSTEM:WINDOWS /RELEASE ^
    user32.lib gdi32.lib shell32.lib advapi32.lib
 ```
@@ -51,13 +51,13 @@ cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /DNDEBUG /M
   考虑绕开 CRT（`/NODEFAULTLIB` + 自定义入口），代价是要自己接管全局初始化，本项目
   没这么做。
 - `/utf-8` 必须带上：源码里的中文 UI 文案是 UTF-8，缺少它 MSVC 会按 ANSI 代码页解析。
-- manifest（DPI 感知、`asInvoker`）通过 `src/percentage.rc` 里的
-  `1 RT_MANIFEST "percentage.manifest"` 嵌入，随 `rc.exe` 一起编进 `.res`。想给 exe
-  加个文件图标，把 `percentage.ico` 放到 `src\` 下，取消 `.rc` 里 `1 ICON` 那行的注释即可。
+- manifest（DPI 感知、`asInvoker`）通过 `src/BatteryTray.rc` 里的
+  `1 RT_MANIFEST "BatteryTray.manifest"` 嵌入，随 `rc.exe` 一起编进 `.res`。想给 exe
+  加个文件图标，把 `BatteryTray.ico` 放到 `src\` 下，取消 `.rc` 里 `1 ICON` 那行的注释即可。
 
 ## 使用
 
-双击 `percentage.exe` 即可，托盘出现电量数字。想开机自启，用右键菜单里的
+双击 `BatteryTray.exe` 即可，托盘出现电量数字。想开机自启，用右键菜单里的
 「开机启动」，或者把 exe 放进启动文件夹（Win+R 输入 `shell:startup`）。
 
 ## 源码

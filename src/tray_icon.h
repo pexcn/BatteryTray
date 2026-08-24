@@ -5,7 +5,7 @@
 
 #include <string_view>
 
-namespace pct {
+namespace bt {
 
 // Turns the battery text (L"87", L"FL") into a notification-area sized HICON.
 // The fitted font and the measuring DC are kept across renders because a render
@@ -29,4 +29,4 @@ private:
     int baseline_ = 0;
 };
 
-} // namespace pct
+} // namespace bt

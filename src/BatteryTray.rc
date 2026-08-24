@@ -2,12 +2,12 @@
 
 // CREATEPROCESS_MANIFEST_RESOURCE_ID: embedding the manifest is what makes the
 // process DPI aware and keeps it running as the invoking user.
-1 RT_MANIFEST "percentage.manifest"
+1 RT_MANIFEST "BatteryTray.manifest"
 
 // The tray icon is drawn at runtime, so the only icon a resource could add is
-// the one Explorer shows for the .exe itself. Drop a percentage.ico next to
+// the one Explorer shows for the .exe itself. Drop a BatteryTray.ico next to
 // this file and uncomment to embed it:
-// 1 ICON "percentage.ico"
+// 1 ICON "BatteryTray.ico"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION 1,0,0,0
@@ -24,9 +24,9 @@ BEGIN
         BEGIN
             VALUE "FileDescription", "Battery percentage in the notification area"
             VALUE "FileVersion", "1.0.0.0"
-            VALUE "InternalName", "percentage"
-            VALUE "OriginalFilename", "percentage.exe"
-            VALUE "ProductName", "percentage"
+            VALUE "InternalName", "BatteryTray"
+            VALUE "OriginalFilename", "BatteryTray.exe"
+            VALUE "ProductName", "BatteryTray"
             VALUE "ProductVersion", "1.0.0.0"
         END
     END

@@ -3,9 +3,9 @@
 #include <string>
 #include <string_view>
 
-namespace pct {
+namespace bt {
 
-// Appends battery changes to percentage.log next to the executable. Writes are
+// Appends battery changes to BatteryTray.log next to the executable. Writes are
 // synchronous open-append-close: changes arrive minutes apart, so a background
 // thread would only buy a shutdown race in exchange for nothing.
 class BatteryLog {
@@ -23,4 +23,4 @@ private:
     bool enabled_ = false;
 };
 
-} // namespace pct
+} // namespace bt

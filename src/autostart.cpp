@@ -6,11 +6,11 @@
 
 #include <string>
 
-namespace pct::autostart {
+namespace bt::autostart {
 namespace {
 
 constexpr wchar_t kRunKeyPath[] = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
-constexpr wchar_t kValueName[] = L"percentage";
+constexpr wchar_t kValueName[] = L"BatteryTray";
 
 } // namespace
 
@@ -54,4 +54,4 @@ bool set_enabled(bool enable) {
                           reinterpret_cast<const BYTE*>(command.c_str()), bytes) == ERROR_SUCCESS;
 }
 
-} // namespace pct::autostart
+} // namespace bt::autostart

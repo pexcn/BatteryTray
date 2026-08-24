@@ -2,7 +2,7 @@
 
 #include "win32.h"
 
-namespace pct {
+namespace bt {
 
 std::wstring module_file_path() {
     std::wstring path(MAX_PATH, L'\0');
@@ -34,4 +34,4 @@ std::wstring module_directory() {
     return path;
 }
 
-} // namespace pct
+} // namespace bt

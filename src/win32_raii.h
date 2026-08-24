@@ -4,7 +4,7 @@
 
 #include <utility>
 
-namespace pct {
+namespace bt {
 
 // Win32 resources differ in invalid value and release function, and their
 // releasers have return types unique_ptr deleters cannot swallow cleanly, so a
@@ -85,4 +85,4 @@ using unique_regkey = unique_handle<HKEY, regkey_traits>;
 using unique_kernel_handle = unique_handle<HANDLE, kernel_handle_traits>;
 using unique_file = unique_handle<HANDLE, file_traits>;
 
-} // namespace pct
+} // namespace bt

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace pct::autostart {
+namespace bt::autostart {
 
 // Per-user Run key: no elevation needed, and it is the only state this program
 // persists anywhere.
@@ -8,4 +8,4 @@ namespace pct::autostart {
 
 bool set_enabled(bool enable);
 
-} // namespace pct::autostart
+} // namespace bt::autostart

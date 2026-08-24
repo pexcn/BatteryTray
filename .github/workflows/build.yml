@@ -26,6 +26,6 @@ jobs:
     - name: Upload to Artifact
       uses: actions/upload-artifact@v7
       with:
-        name: percentage
-        path: build\percentage.exe
+        name: BatteryTray
+        path: build\BatteryTray.exe
         if-no-files-found: error

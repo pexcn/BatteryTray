@@ -8,7 +8,7 @@
 #include <cwchar>
 #include <string>
 
-namespace pct {
+namespace bt {
 namespace {
 
 // Rolls to a single .old copy, so the pair never exceeds about 1 MB.
@@ -19,7 +19,7 @@ std::wstring log_path() {
     if (directory.empty()) {
         return {};
     }
-    return directory + L"\\percentage.log";
+    return directory + L"\\BatteryTray.log";
 }
 
 std::wstring timestamp() {
@@ -115,4 +115,4 @@ void BatteryLog::append_status(std::wstring_view display, bool charging) {
     enabled_ = write_line(line);
 }
 
-} // namespace pct
+} // namespace bt

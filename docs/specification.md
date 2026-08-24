@@ -1,6 +1,6 @@
-# percentage 技术规格
+# BatteryTray 技术规格
 
-`percentage` 是一个 Windows 系统托盘小程序：在任务栏通知区用一个动态生成的图标显示当前电池百分比。
+`BatteryTray` 是一个 Windows 系统托盘小程序：在任务栏通知区用一个动态生成的图标显示当前电池百分比。
 本文档描述它的功能规格与实现约束。
 
 程序最初用 C#/.NET Framework 4.8.1 + WinForms 实现，现已重写为**原生 C++（C++23）+ Win32 API**。
@@ -24,7 +24,7 @@
    - 不链接系统库以外的任何东西；不引入 vcpkg/conan 等包管理器。
 3. **零第三方依赖**：只允许使用 Windows 自带的系统库（user32、gdi32、shell32、advapi32、gdiplus 等）与 C++ 标准库。**禁止**引入任何外部开源库、框架或 NuGet/vcpkg 包。
    - 文字绘制优先用纯 GDI（`CreateFont` + `TextOut` + `GetTextExtentPoint32`）以避免依赖 GDI+；若为字形质量选用 GDI+，需说明理由并确保 `gdiplus.dll` 是系统自带、无需分发。
-4. **单文件可执行**：产物是一个独立的 `percentage.exe`，双击即用，无需安装、无需额外 DLL 分发。
+4. **单文件可执行**：产物是一个独立的 `BatteryTray.exe`，双击即用，无需安装、无需额外 DLL 分发。
 5. **绿色便携**：程序自身不产生配置文件，不向用户目录/系统目录写入任何东西。唯一会写的文件是「电量日志」，且**只写在 exe 所在目录**（见 [2.8](#28-电量日志)）。唯一的持久化状态是「开机启动」项写在注册表 `Run` 键（读写注册表不破坏便携性，是 Windows 开机启动的标准做法）；日志开关等其它状态不持久化。
 
 ## 2. 功能规格
@@ -89,9 +89,9 @@
 勾选式开关：
 
 - 勾选时开始记录，取消勾选时停止；用一个 bool 状态标记即可。日志开关状态**不持久化**，每次启动默认关闭（保持零配置文件的便携特性）。
-- **日志文件放在 exe 所在目录**（`GetModuleFileName` 取 exe 全路径 → 取其目录），文件名 `percentage.log`。**不得写入任何其它目录**（便携/绿色版要求）。
+- **日志文件放在 exe 所在目录**（`GetModuleFileName` 取 exe 全路径 → 取其目录），文件名 `BatteryTray.log`。**不得写入任何其它目录**（便携/绿色版要求）。
 - **写入方式：同步 open-append-close，不用后台线程/队列。** 由于刷新已是事件驱动，日志写入是稀有事件（电量变化通常数分钟一次），每次事件里同步「打开→追加一行→关闭」即可，耗时微秒级、不卡 UI。这样无跨线程共享，从根本上消除「写已关闭句柄」的竞态（比线程+队列更简单也更健壮），不独占文件，用户可随时查看，退出时也无需特殊 flush/关闭逻辑。
-- **大小上限 512KB，单文件滚动**：每次追加前检查 `percentage.log` 大小，若写入后将超过 512KB，则先把它重命名覆盖为 `percentage.log.old`（`MoveFileEx` + `MOVEFILE_REPLACE_EXISTING`），再新建 `percentage.log` 继续写。最多保留两个文件（当前 + 一个 `.old`），总量约 1MB，且都在 exe 目录内。
+- **大小上限 512KB，单文件滚动**：每次追加前检查 `BatteryTray.log` 大小，若写入后将超过 512KB，则先把它重命名覆盖为 `BatteryTray.log.old`（`MoveFileEx` + `MOVEFILE_REPLACE_EXISTING`），再新建 `BatteryTray.log` 继续写。最多保留两个文件（当前 + 一个 `.old`），总量约 1MB，且都在 exe 目录内。
 - **写失败要容错**：若 exe 目录不可写（如放在 `Program Files`），打开/写入会失败——此时**静默禁用日志、取消菜单勾选**，绝不崩溃，也**不得**改写到别的目录作为兜底。
 - 开启时写一行 `[<时间戳>]: 开启电量日志`，关闭时写 `[<时间戳>]: 关闭电量日志`。
 - 每次电量/充电状态变化时追加：`[<时间戳>]: <正在充电|使用电池> -> <percentage>%`。
@@ -101,7 +101,7 @@
 
 勾选式开关，用勾选状态（`MF_CHECKED`/`MF_UNCHECKED`）表示当前是否已启用。
 
-- 实现方式：写入/删除注册表运行项 `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`，值名用程序名（如 `percentage`），值数据为当前可执行文件的完整路径（用 `GetModuleFileName` 获取，路径含空格时加引号）。
+- 实现方式：写入/删除注册表运行项 `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`，值名用程序名（如 `BatteryTray`），值数据为当前可执行文件的完整路径（用 `GetModuleFileName` 获取，路径含空格时加引号）。
 - 用 HKCU（当前用户）而非 HKLM，避免需要管理员权限。
 - 每次弹出菜单前（`WM_INITMENUPOPUP` 或构建菜单时）读取注册表，据实回填勾选状态，保证与外部改动同步。
 - 点击切换：已启用则删除该值，未启用则写入；操作失败要有容错（记录/忽略，不崩溃）。
@@ -135,12 +135,12 @@
 - 托盘图标随电量/充电状态变化正确刷新，颜色随系统主题正确。
 - 三个菜单项（电量日志、开机启动、退出）行为正确，勾选状态与实际状态一致。
 - 反复开关日志、切换开机启动、explorer 重启后均不泄漏句柄、不崩溃。
-- 用给出的 MSVC 命令能一次编译出去除了调试信息、无 DLL 依赖的单文件 `percentage.exe`。
+- 用给出的 MSVC 命令能一次编译出去除了调试信息、无 DLL 依赖的单文件 `BatteryTray.exe`。
 
 ## 7. 持续集成
 
 GitHub Actions（`.github/workflows/build.yml`）在 `windows-latest` 上直接调用仓库根的 `build.bat`，
-把 `build\percentage.exe` 作为构建产物上传。
+把 `build\BatteryTray.exe` 作为构建产物上传。
 
 - **构建脚本是唯一事实来源**：CI 不重复一遍 `cl` / `rc` 的参数，也不用第三方的 MSVC 环境配置 action
   （`build.bat` 自己用 vswhere 找到并调用 `vcvars64.bat`）。这样 CI 与本地构建出的是同一份东西，

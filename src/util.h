@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace pct {
+namespace bt {
 
 // Full path of the running executable, empty on failure.
 std::wstring module_file_path();
@@ -10,4 +10,4 @@ std::wstring module_file_path();
 // Directory holding the running executable, without a trailing backslash.
 std::wstring module_directory();
 
-} // namespace pct
+} // namespace bt
