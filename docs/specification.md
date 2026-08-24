@@ -130,6 +130,23 @@
    `LegalCopyright` 写 `Copyright © <年> pexcn · GPL-3.0-or-later`（对齐同作者的其它项目）。
    非 ASCII 文案要求 `.rc` 存成 UTF-8 并在开头写 `#pragma code_page(65001)`，
    否则 rc.exe 按系统 ANSI 代码页解析，在非中文 Windows 上编出乱码。版本号见 [7.1](#71-版本号)。
+7. **exe 图标资源**（`.rc` 里的 `1 ICON "BatteryTray.ico"`）：资源管理器、任务管理器与快捷方式上显示的
+   文件图标。与托盘图标无关 —— 托盘那个仍是运行时按 [2.3](#23-托盘图标内容) 画出来的数字。
+   - **图形来自 Segoe Fluent Icons 的 `BatteryCharging10`（`U+EA93`）字形**，与截图里 Windows 自己的
+     充电电池同源，视觉上和系统一致。这个码位在 Segoe MDL2 Assets 上指向同一张图（其余充电档位两套字体
+     的码位并不对齐），所以只装了 MDL2 的 Windows 10 上也能渲染出相同结果。
+   - **由 `tools/make_icon.ps1` 在设计期渲染一次，产物 `src/BatteryTray.ico` 提交进仓库**，构建只消费不生成。
+     不放进 `build.bat` 的理由：`rc.exe` 要的就是成品文件，而 CI 的 `windows-latest` 是 Windows Server
+     镜像，只有 Segoe MDL2 Assets、没有 Segoe Fluent Icons，构建期渲染会让 CI 与本地产出不同的东西。
+     改字形、配色或尺寸集时重跑脚本并把 `.ico` 一起提交。
+   - **尺寸集 16 / 24 / 32 / 48 / 256**：前四档用未压缩的 32bpp BMP 帧，256 用 PNG 帧（PNG 压缩只在
+     256×256 上被各版本 shell 普遍认得）。20 / 64 / 128 略去 —— shell 的各处界面都会就近挑一档缩放，
+     而每一帧都是实打实压在 exe 体积上的，资源段不参与 `/OPT:REF` 的冗余消除。
+   - **配色是单色 `#107C10` + 透明背景**，不跟随系统主题：文件图标会同时出现在浅色的资源管理器和深色的
+     任务管理器里，托盘那套「浅色主题黑字、深色主题白字」搬过来必然有一边看不见，图标本身得自带对比度。
+   - 抗锯齿同样用灰度而非 ClearType（理由同 [2.3](#23-托盘图标内容)）。但与托盘图标不同，`.ico` 帧里存的是
+     **直 alpha（非预乘）** —— 预乘只是 `CreateIconIndirect` 从 DIB 造 `HICON` 时的要求，图标文件格式本身
+     按直 alpha 解释。
 
 ## 5. 风格与工程约束
 

@@ -17,10 +17,11 @@
 // process DPI aware and keeps it running as the invoking user.
 1 RT_MANIFEST "BatteryTray.manifest"
 
-// The tray icon is drawn at runtime, so the only icon a resource could add is
-// the one Explorer shows for the .exe itself. Drop a BatteryTray.ico next to
-// this file and uncomment to embed it:
-// 1 ICON "BatteryTray.ico"
+// The tray icon is drawn at runtime; this one is what Explorer, the task
+// manager and shortcuts show for the .exe itself. It is committed rather than
+// generated at build time because tools/make_icon.ps1 renders it from a symbol
+// font the CI image does not have (see docs/specification.md 4.7).
+1 ICON "BatteryTray.ico"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION VERSION_QUAD

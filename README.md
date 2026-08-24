@@ -56,9 +56,14 @@ cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /Gw /DNDEBU
   被删掉；如果还要更小，可以进一步考虑绕开 CRT（`/NODEFAULTLIB` + 自定义入口），代价是
   要自己接管全局初始化，本项目没这么做。
 - `/utf-8` 必须带上：源码里的中文 UI 文案是 UTF-8，缺少它 MSVC 会按 ANSI 代码页解析。
-- manifest（DPI 感知、`asInvoker`）通过 `src/BatteryTray.rc` 里的
-  `1 RT_MANIFEST "BatteryTray.manifest"` 嵌入，随 `rc.exe` 一起编进 `.res`。想给 exe
-  加个文件图标，把 `BatteryTray.ico` 放到 `src\` 下，取消 `.rc` 里 `1 ICON` 那行的注释即可。
+- manifest（DPI 感知、`asInvoker`）与 exe 的文件图标都通过 `src/BatteryTray.rc` 嵌入
+  （`1 RT_MANIFEST` 与 `1 ICON`），随 `rc.exe` 一起编进 `.res`。图标 `src/BatteryTray.ico`
+  由 `tools/make_icon.ps1` 从 Segoe Fluent Icons 的充电电池字形（`U+EA93`）渲染，产物直接进仓库，
+  构建不依赖那个字体；想换字形、配色或尺寸，改参数重跑脚本并把 `.ico` 一起提交：
+
+  ```cmd
+  powershell -ExecutionPolicy Bypass -File tools\make_icon.ps1
+  ```
 - **版本号**：CI 从 git tag 算出版本，通过 `VERSION` 环境变量传给 `build.bat`，再写进
   `build\version.h` 供 `rc` 嵌入 `VERSIONINFO`：tag 上是 `1.2.3`，之后的提交带上距 tag 的
   提交数（`1.2.3-5`）。本地构建没有这个变量，版本就是 `0.0.0`；想要真版本，
@@ -78,6 +83,7 @@ cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /Gw /DNDEBU
 | `src/battery_log.cpp` | 电量日志的写入与滚动 |
 | `src/autostart.cpp` | 注册表 `Run` 项的读写 |
 | `src/win32_raii.h` | GDI / 内核句柄的 RAII 包装 |
+| `tools/make_icon.ps1` | 设计期生成 exe 的文件图标 `src/BatteryTray.ico` |
 
 ## 许可证
 
