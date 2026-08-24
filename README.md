@@ -37,7 +37,7 @@ build.bat
 rc /nologo /I src /fo build\BatteryTray.res src\BatteryTray.rc
 
 cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /DNDEBUG /MT ^
-   /Fo"build\\" /Fe"build\BatteryTray.exe" ^
+   /Fobuild\ /Febuild\BatteryTray.exe ^
    src\*.cpp build\BatteryTray.res ^
    /link /LTCG /OPT:REF,ICF /SUBSYSTEM:WINDOWS /RELEASE ^
    user32.lib gdi32.lib shell32.lib advapi32.lib
