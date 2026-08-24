@@ -3,7 +3,7 @@
 ![](BatteryTray.png)
 
 在 Windows 通知区域（托盘）显示当前电池百分比。原生 C++ / Win32 实现，单文件
-`BatteryTray.exe`，无第三方依赖、无需安装、不写配置文件。
+`BatteryTray.exe`，无第三方依赖、无需安装、不写配置文件。需要 Windows 10 及以上。
 
 ## 功能
 
@@ -36,20 +36,25 @@ build.bat
 ```cmd
 rc /nologo /I src /fo build\BatteryTray.res src\BatteryTray.rc
 
-cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /DNDEBUG /MT ^
+cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /Gw /DNDEBUG /MT ^
    /Fobuild\ /Febuild\BatteryTray.exe ^
    src\*.cpp build\BatteryTray.res ^
-   /link /LTCG /OPT:REF,ICF /SUBSYSTEM:WINDOWS /RELEASE ^
-   user32.lib gdi32.lib shell32.lib advapi32.lib
+   /link /LTCG /OPT:REF,ICF /SUBSYSTEM:WINDOWS /RELEASE /NODEFAULTLIB:libucrt.lib ^
+   ucrt.lib user32.lib gdi32.lib shell32.lib advapi32.lib
 ```
 
 说明：
 
-- `/MT` 静态链接 CRT，产物不依赖任何 VC++ 运行时可再发行包；只链接系统库。
+- **CRT 混合链接**：`/MT` 把 vcruntime 和 C++ 标准库静态链进去，
+  `/NODEFAULTLIB:libucrt.lib ucrt.lib` 则让 UCRT 走系统的 `ucrtbase.dll`。
+  这样产物仍是单文件、不需要 VC++ 可再发行包（`vcruntime140.dll` / `msvcp140.dll`
+  不随 Windows 分发，而 `ucrtbase.dll` 从 Windows 10 起是系统自带组件），体积比全静态
+  小得多，UCRT 的安全补丁也由 Windows Update 负责。**代价是要求 Windows 10 及以上**；
+  想支持更老的系统就去掉这两个链接选项，退回 `/MT` 全静态。
 - 不传 `/Zi`、不传 `/DEBUG`，因此 Release 不生成 PDB，可执行文件里没有调试信息。
-- `/GL` + `/LTCG` + `/OPT:REF,ICF` 做全程序优化与冗余消除；如果还要更小，可以进一步
-  考虑绕开 CRT（`/NODEFAULTLIB` + 自定义入口），代价是要自己接管全局初始化，本项目
-  没这么做。
+- `/GL` + `/LTCG` + `/OPT:REF,ICF` 做全程序优化与冗余消除，`/Gw` 让未引用的全局数据也能
+  被删掉；如果还要更小，可以进一步考虑绕开 CRT（`/NODEFAULTLIB` + 自定义入口），代价是
+  要自己接管全局初始化，本项目没这么做。
 - `/utf-8` 必须带上：源码里的中文 UI 文案是 UTF-8，缺少它 MSVC 会按 ANSI 代码页解析。
 - manifest（DPI 感知、`asInvoker`）通过 `src/BatteryTray.rc` 里的
   `1 RT_MANIFEST "BatteryTray.manifest"` 嵌入，随 `rc.exe` 一起编进 `.res`。想给 exe

@@ -15,10 +15,15 @@
    - 仅在电量百分比或充电状态**发生变化**时才重建托盘图标（用缓存判断去重）。
    - 复用 GDI 资源（字体、DC 等），避免热路径上重复创建/销毁。
    - 每次生成图标后必须 `DestroyIcon` 释放句柄，杜绝 GDI/USER 句柄泄漏。
-2. **编译与体积**：产物要经过优化并去除调试信息（相当于 GCC 的 `-O3` + `strip`）。
-   - **工具链：MSVC（Visual Studio / Build Tools）。** 在「零第三方依赖 + 小体积」目标下，MSVC 配静态 CRT 能做到真正无 DLL 依赖且体积最小。
-     - 优化 + 去调试信息：`cl /std:c++latest /O2 /GL /DNDEBUG /MT ...`（`/std:c++latest` 启用 C++23 特性），链接 `/LTCG /OPT:REF,ICF`，**Release 不生成 PDB**（等价于 strip）。
-     - `/MT` 静态链接 CRT，使 `.exe` 不依赖任何 VC++ 运行时可再发行包。
+2. **编译与体积**：产物要经过优化并去除调试信息（相当于 GCC 的 `-O3` + `strip`。
+   - **工具链：MSVC（Visual Studio / Build Tools）。**
+     - 优化 + 去调试信息：`cl /std:c++latest /O2 /GL /Gw /DNDEBUG /MT ...`（`/std:c++latest` 启用 C++23 特性），链接 `/LTCG /OPT:REF,ICF`，**Release 不生成 PDB**（等价于 strip）。
+     - **CRT 用混合链接**：UCRT 动态、vcruntime 与 C++ 标准库静态，即 `/MT` 再叠加
+       `/link /NODEFAULTLIB:libucrt.lib ucrt.lib`。
+       - 目的是**单文件零 redist**：`vcruntime140.dll` / `msvcp140.dll` 不随 Windows 分发，一旦依赖它们就得让用户先装 VC++ 可再发行包，与 [1.4](#1-硬性约束最高优先级) 冲突；而 `ucrtbase.dll` 从 Windows 10 起就是系统自带组件，与 user32、gdi32 同级，依赖它不破坏零第三方依赖。
+       - **前提：目标平台为 Windows 10（LTSC 2021 / build 19044 及以上）。** 若目标要回退到 Win7/Win8（UCRT 在那里需要单独更新才有），改回 `/MT` 全静态。
+       - 全静态 CRT 也满足零 redist，但体积明显更大（UCRT 是静态 CRT 里的大头），且 CRT 的安全补丁只能靠重新发版；**「静态 CRT 体积最小」是错的**，静态换来的是无依赖而非小体积。
+       - 验收时必须确认 exe 的导入表里没有 `vcruntime140.dll` / `msvcp140.dll`（`dumpbin /dependents`，或 MSYS2 的 `objdump -p`）。
      - manifest 与图标资源用 `rc.exe` 编译 `.rc` 嵌入（也可用 `/MANIFEST` / `mt.exe`）。
    - `/OPT:REF,ICF` 已做冗余消除；如仍需进一步压缩需说明取舍。
    - 不链接系统库以外的任何东西；不引入 vcpkg/conan 等包管理器。
@@ -118,7 +123,7 @@
 
 1. 完整可编译的 C++ 源码（可单文件 `main.cpp`，也可按职责合理拆分为少量文件，但保持简单）。
 2. 一份应用程序 manifest（DPI 感知、`requestedExecutionLevel` 为 `asInvoker`）及其嵌入方式说明。
-3. 构建说明：MSVC 命令（`/O2 /GL /MT /DNDEBUG` + `/LTCG /OPT:REF,ICF`、Release 无 PDB）；说明如何嵌入 manifest 与图标资源（`.rc`）。
+3. 构建说明：MSVC 命令（见 [1.2](#1-硬性约束最高优先级)：`/O2 /GL /Gw /DNDEBUG /MT` + `/LTCG /OPT:REF,ICF`、UCRT 混合链接、Release 无 PDB）；说明如何嵌入 manifest 与图标资源（`.rc`）。
 4. 简短 README 段落：功能、构建、使用（放进启动文件夹或用菜单「开机启动」）。
 5. 代码注释用英文；只在解释「为什么」（平台怪癖、非显然的取舍）时写注释，不复述代码。
 
@@ -135,7 +140,7 @@
 - 托盘图标随电量/充电状态变化正确刷新，颜色随系统主题正确。
 - 三个菜单项（电量日志、开机启动、退出）行为正确，勾选状态与实际状态一致。
 - 反复开关日志、切换开机启动、explorer 重启后均不泄漏句柄、不崩溃。
-- 用给出的 MSVC 命令能一次编译出去除了调试信息、无 DLL 依赖的单文件 `BatteryTray.exe`。
+- 用给出的 MSVC 命令能一次编译出去除了调试信息的单文件 `BatteryTray.exe`：导入表里只有 Windows 自带的系统 DLL，没有 `vcruntime140.dll` / `msvcp140.dll`，在干净的 Windows 10 上双击即可运行。
 
 ## 7. 持续集成
 

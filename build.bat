@@ -7,11 +7,13 @@ if not exist build mkdir build
 
 rc /nologo /I src /fo build\BatteryTray.res src\BatteryTray.rc || exit /b
 
-cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /DNDEBUG /MT ^
+rem UCRT comes from ucrtbase.dll, an inbox system DLL since Windows 10; keeping
+rem vcruntime and the STL static leaves the exe a single file with no redist.
+cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /Gw /DNDEBUG /MT ^
    /Fobuild\ /Febuild\BatteryTray.exe ^
    src\*.cpp build\BatteryTray.res ^
-   /link /LTCG /OPT:REF,ICF /SUBSYSTEM:WINDOWS /RELEASE ^
-   user32.lib gdi32.lib shell32.lib advapi32.lib || exit /b
+   /link /LTCG /OPT:REF,ICF /SUBSYSTEM:WINDOWS /RELEASE /NODEFAULTLIB:libucrt.lib ^
+   ucrt.lib user32.lib gdi32.lib shell32.lib advapi32.lib || exit /b
 
 echo Built build\BatteryTray.exe
 exit /b 0
