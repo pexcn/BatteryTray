@@ -27,7 +27,7 @@
      - manifest 与图标资源用 `rc.exe` 编译 `.rc` 嵌入（也可用 `/MANIFEST` / `mt.exe`）。
    - `/OPT:REF,ICF` 已做冗余消除；如仍需进一步压缩需说明取舍。
    - 不链接系统库以外的任何东西；不引入 vcpkg/conan 等包管理器。
-3. **零第三方依赖**：只允许使用 Windows 自带的系统库（user32、gdi32、shell32、advapi32、gdiplus 等）与 C++ 标准库。**禁止**引入任何外部开源库、框架或 NuGet/vcpkg 包。
+3. **零第三方依赖**：只允许使用 Windows 自带的系统库（user32、gdi32、shell32、advapi32、cfgmgr32、gdiplus 等）与 C++ 标准库。**禁止**引入任何外部开源库、框架或 NuGet/vcpkg 包。
    - 文字绘制优先用纯 GDI（`CreateFont` + `TextOut` + `GetTextExtentPoint32`）以避免依赖 GDI+；若为字形质量选用 GDI+，需说明理由并确保 `gdiplus.dll` 是系统自带、无需分发。
 4. **单文件可执行**：产物是一个独立的 `BatteryTray.exe`，双击即用，无需安装、无需额外 DLL 分发。
 5. **绿色便携**：程序自身不产生配置文件，不向用户目录/系统目录写入任何东西。唯一会写的文件是「电量日志」，且**只写在 exe 所在目录**（见 [2.8](#28-电量日志)）。唯一的持久化状态是「开机启动」项写在注册表 `Run` 键（读写注册表不破坏便携性，是 Windows 开机启动的标准做法）；日志开关等其它状态不持久化。
@@ -51,6 +51,8 @@
 - 启动时先主动刷新一次作为初始状态。
 - 退出前 `UnregisterPowerSettingNotification`。
 - 空闲态不得有任何轮询循环或周期性定时器占用 CPU。
+- Tooltip 里的瞬时功率另有一个采样时机（鼠标悬停，见 [2.6.2](#262-采样时机)）—— 同样是被动响应消息，
+  不是定时轮询。
 
 ### 2.3 托盘图标内容
 
@@ -85,9 +87,53 @@
 ### 2.6 充电状态与 Tooltip
 
 - `isCharging = (电源线在线)`，通过 `GetSystemPowerStatus` 的 `ACLineStatus == 1` 判断。
-- Tooltip 文案（`NOTIFYICONDATA.szTip`，中文）：
-  - 充电中：`正在充电：<percentage>%`
-  - 用电池：`使用电池：<percentage>%`
+- Tooltip 文案（`NOTIFYICONDATA.szTip`，中文）**共三行**，用 `\r\n` 分隔：
+
+```
+使用电池：78%
+功耗 11.2 W · 每 1% 约 4分28秒
+预计剩余 5小时42分
+```
+
+  - 第一行：`<正在充电|使用电池>：<percentage>%`（充电与否按上面的 `ACLineStatus` 判断）。
+  - 第二行：`<充电|功耗> <瓦数，一位小数> W · 每 1% 约 <时长>`。
+  - 第三行：`预计<充满|剩余> <时长>`。
+  - 后两行的「充电/放电」方向按**电流方向**（`Rate` 的正负）判断，不按 `ACLineStatus` —— 满电插着电源时线是在线的，但没有电流，那时后两行整体省略。
+
+#### 2.6.1 电量与功率的数据来源
+
+第一行的百分比来自 `GetSystemPowerStatus`，但**后两行不能**：`BatteryLifePercent` 只有整数百分比，
+「1% 能用多久」得等一整格走完才算得出来，而且算出来的是过去时。改从电池驱动直接取能量与功率：
+
+- 用 `CM_Get_Device_Interface_ListW` 枚举 `GUID_DEVICE_BATTERY` 接口，`CreateFile` 打开设备，
+  依次 `IOCTL_BATTERY_QUERY_TAG` → `IOCTL_BATTERY_QUERY_INFORMATION`（`BatteryInformation`）
+  → `IOCTL_BATTERY_QUERY_STATUS`，拿到 `FullChargedCapacity`、`Capacity`（均为 **mWh**）与
+  `Rate`（**mW**，放电为负）。
+  - **用 cfgmgr32 而不是 setupapi**：同一份接口列表在这边是「问长度 + 取一次」两个调用，在那边要
+    `HDEVINFO` 加两趟 `SP_DEVICE_INTERFACE_DETAIL_DATA`；两个 DLL 都是系统自带，代码少的那个划算。
+  - `GUID_DEVICE_BATTERY` 的值**直接写在源码里**，不 `#include <initguid.h>` —— 那个头会给
+    Windows 头文件里声明过的每个 GUID 都生成一份定义，与 `main.cpp` 里已经实例化的电源设置 GUID 撞符号。
+  - 跳过 `BATTERY_CAPACITY_RELATIVE`（容量单位由驱动自定义、未公开，mWh 算术无意义）与
+    非 `BATTERY_SYSTEM_BATTERY` 的设备（UPS 之类）。多块电池取第一块应答的，不求和 ——
+    类驱动不保证多块电池的 `Rate` 单位一致。
+  - 无电池、驱动不给值、任一步失败：**只显示第一行**，不显示占位符也不报错。
+- 换算：`每 1% 时长 = FullChargedCapacity / 100 / |Rate|`（小时），
+  `剩余 = Capacity / |Rate|`，`充满 = (FullChargedCapacity - Capacity) / Rate`。
+- 时长格式：不足 1 分钟为 `<秒>秒`，不足 1 小时为 `<分>分<秒>秒`，否则 `<小时>小时<分>分`。
+  超过一小时不显示秒 —— 这个数本来就是从一个瞬时采样外推出来的，秒是噪声。
+
+#### 2.6.2 采样时机
+
+`Rate` 是**瞬时**功率，抖动大且会随负载变化，停留在几分钟前那次电量变化时的值会明显不准。所以除了
+[2.2](#22-刷新机制事件驱动禁止轮询) 的电源事件之外，收到 `NIN_POPUPOPEN`（shell 在 tooltip 即将
+显示时发来，需要 `NOTIFYICON_VERSION_4` + `NIF_SHOWTIP`，本程序两者都已经在用）时**重采一次**并
+`NIM_MODIFY` 更新 `szTip`。
+
+- 这仍然是事件驱动：只有鼠标真的悬停上来才会采样，空闲时一次都不采，不违反 2.2 的禁轮询。
+- 已知不确定项：shell 可能在发出 `NIN_POPUPOPEN` 之前就取走了 tip 文本，那样新值要下一次悬停才生效。
+  即便如此也好过只在电量变化时更新，故不为此改用自绘 tooltip（那要放弃 `NIF_SHOWTIP` 并自己管一个
+  `TTM_*` 控件的显示与定位）。
+- 一次采样是「打开设备 + 三个 IOCTL」，微秒级，且只发生在电源事件与悬停这两个稀有时刻，不在热路径上。
 
 ### 2.7 右键上下文菜单
 

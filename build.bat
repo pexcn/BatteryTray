@@ -26,7 +26,7 @@ cl /nologo /std:c++latest /utf-8 /W4 /permissive- /EHsc /GR- /O2 /GL /Gw /DNDEBU
    /Fobuild\ /Febuild\BatteryTray.exe ^
    src\*.cpp build\BatteryTray.res ^
    /link /LTCG /OPT:REF,ICF /SUBSYSTEM:WINDOWS /RELEASE /NODEFAULTLIB:libucrt.lib ^
-   ucrt.lib user32.lib gdi32.lib shell32.lib advapi32.lib || exit /b
+   ucrt.lib user32.lib gdi32.lib shell32.lib advapi32.lib cfgmgr32.lib || exit /b
 
 echo Built build\BatteryTray.exe %VERSION%
 exit /b 0

@@ -7,6 +7,7 @@
 ## 特性
 
 - 托盘图标实时显示电量数字，满电时显示 `FL`
+- 鼠标悬停显示**当前功耗、每 1% 能撑多久、预计剩余时间**
 - 图标按当前 DPI 现画，100% / 150% / 200% 缩放下都不糊
 - 文字颜色跟随系统主题：浅色主题黑字，深色主题白字
 - 事件驱动刷新，由系统推送电量与充电状态变化，**不轮询，空闲时几乎不占 CPU**
@@ -34,6 +35,11 @@
 - 原生 C++（C++23）+ Win32 API，无第三方库、无框架；一个隐藏窗口收事件，`Shell_NotifyIcon` 显示图标
 - 电量变化由 `RegisterPowerSettingNotification` + `WM_POWERBROADCAST` 推送，没有定时器轮询；
   托盘图标只在数字或充电状态真的变了时才重画
+- Tooltip 里的功耗与时长不来自 `GetSystemPowerStatus`——它只有整数百分比，「1% 能用多久」得等
+  一整格走完才算得出来，而且是过去时。改用 cfgmgr32 枚举 `GUID_DEVICE_BATTERY` 后走
+  `IOCTL_BATTERY_QUERY_STATUS`，直接拿电池的剩余能量（mWh）与瞬时功率（mW），一次采样就有答案。
+  瞬时功率会随负载抖，所以在 shell 发来 `NIN_POPUPOPEN`（tooltip 即将显示）时重采一次——
+  仍是被动响应消息，空闲时一次都不采
 - 托盘图标是运行时把数字**渲染成带 alpha 的位图**再转 `HICON`，不是现成的图标资源，
   边长取 `GetSystemMetrics(SM_CXSMICON)`，字号按该尺寸拟合，因此天然随 DPI 缩放
 - 字体按名字固定用 `Segoe UI`，不读 `lfMessageFont`：中文 Windows 的 `lfMessageFont` 是
@@ -66,6 +72,7 @@
 | --- | --- |
 | `src/main.cpp` | 隐藏窗口、电源事件、托盘图标与右键菜单 |
 | `src/tray_icon.cpp` | 把电量文字渲染成带 alpha 的 `HICON` |
+| `src/battery_power.cpp` | 从电池驱动读 mWh / mW，供 tooltip 算功耗与时长 |
 | `src/battery_log.cpp` | 电量日志的写入与滚动 |
 | `src/autostart.cpp` | 注册表 `Run` 项的读写 |
 | `src/win32_raii.h` | GDI / 内核句柄的 RAII 包装 |

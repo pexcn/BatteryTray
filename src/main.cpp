@@ -8,10 +8,12 @@
 #include <windowsx.h>
 
 #include <cstdio>
+#include <cwchar>
 #include <string>
 
 #include "autostart.h"
 #include "battery_log.h"
+#include "battery_power.h"
 #include "tray_icon.h"
 #include "util.h"
 #include "win32_raii.h"
@@ -54,6 +56,62 @@ std::wstring display_text(int percent) {
     return percent > 99 ? std::wstring(L"FL") : std::to_wstring(percent);
 }
 
+// Seconds are worth showing only while the span is short enough to watch tick
+// by; past an hour they are noise around an estimate that is already an
+// extrapolation from one instantaneous sample.
+std::wstring format_duration(double seconds) {
+    const long long total = static_cast<long long>(seconds);
+    if (total >= 3600) {
+        return std::to_wstring(total / 3600) + L"小时" + std::to_wstring(total % 3600 / 60) + L"分";
+    }
+    if (total >= 60) {
+        return std::to_wstring(total / 60) + L"分" + std::to_wstring(total % 60) + L"秒";
+    }
+    return std::to_wstring(total) + L"秒";
+}
+
+// The tray tooltip is where "how long does one percent last" gets answered:
+// full charge / 100 is the energy in one percent, and the driver's rate is how
+// fast that energy is moving right now.
+std::wstring build_tooltip(const BatteryState& state) {
+    std::wstring tip = state.charging ? L"正在充电：" : L"使用电池：";
+    tip += display_text(state.percent);
+    tip += L'%';
+
+    const BatteryPower power = query_battery_power();
+    const long rate = power.rate_mw < 0 ? -power.rate_mw : power.rate_mw;
+    // No battery, a driver that reports neither, or a pack sitting at full on
+    // AC with nothing flowing: the percentage alone is all there is to say.
+    if (rate == 0 || power.full_charge_mwh == 0) {
+        return tip;
+    }
+
+    wchar_t line[64];
+    const double one_percent_seconds = power.full_charge_mwh / 100.0 / rate * 3600.0;
+    swprintf_s(line, L"\r\n%s %.1f W · 每 1%% 约 %s", power.rate_mw > 0 ? L"充电" : L"功耗",
+               rate / 1000.0, format_duration(one_percent_seconds).c_str());
+    tip += line;
+
+    // Direction comes from the rate, not from ACLineStatus: a full pack on AC
+    // is plugged in without charging.
+    const bool charging = power.rate_mw > 0;
+    const unsigned long energy = charging ? (power.full_charge_mwh > power.remaining_mwh
+                                                 ? power.full_charge_mwh - power.remaining_mwh
+                                                 : 0)
+                                          : power.remaining_mwh;
+    if (energy != 0) {
+        swprintf_s(line, L"\r\n预计%s %s", charging ? L"充满" : L"剩余",
+                   format_duration(energy / static_cast<double>(rate) * 3600.0).c_str());
+        tip += line;
+    }
+    return tip;
+}
+
+void set_tooltip(NOTIFYICONDATAW& data, const BatteryState& state) {
+    const std::wstring tip = build_tooltip(state);
+    wcsncpy_s(data.szTip, tip.c_str(), _TRUNCATE);
+}
+
 // Sampled once at startup, matching the original: following live theme changes
 // would mean re-rendering on broadcast messages for a setting nobody flips
 // while watching the tray.
@@ -92,6 +150,7 @@ private:
     void add_tray_icon();
     void remove_tray_icon();
     void refresh(bool force);
+    void refresh_tooltip();
     void show_menu(int x, int y);
 
     HINSTANCE instance_;
@@ -178,8 +237,19 @@ LRESULT App::handle_message(UINT message, WPARAM wparam, LPARAM lparam) {
         return 0;
 
     case kTrayCallbackMessage:
-        if (LOWORD(lparam) == WM_CONTEXTMENU) {
+        switch (LOWORD(lparam)) {
+        case WM_CONTEXTMENU:
             show_menu(GET_X_LPARAM(wparam), GET_Y_LPARAM(wparam));
+            break;
+        case NIN_POPUPOPEN:
+            // The draw shown in the tooltip is instantaneous, so a value left
+            // over from the last percent change would be minutes stale. The
+            // shell sends this as the tooltip is about to appear, which is the
+            // only hook there is for sampling at the moment someone looks.
+            refresh_tooltip();
+            break;
+        default:
+            break;
         }
         return 0;
 
@@ -243,7 +313,7 @@ void App::refresh(bool force) {
         data.uFlags |= NIF_ICON;
         data.hIcon = icon.get();
     }
-    swprintf_s(data.szTip, L"%s：%s%%", state.charging ? L"正在充电" : L"使用电池", text.c_str());
+    set_tooltip(data, state);
     Shell_NotifyIconW(NIM_MODIFY, &data);
 
     // Only now is the previous icon safe to destroy: the shell has been handed
@@ -259,6 +329,16 @@ void App::refresh(bool force) {
     last_charging_ = state.charging;
     has_last_ = true;
     log_.append_status(text, state.charging);
+}
+
+void App::refresh_tooltip() {
+    NOTIFYICONDATAW data{};
+    data.cbSize = sizeof(data);
+    data.hWnd = window_;
+    data.uID = kTrayIconId;
+    data.uFlags = NIF_TIP | NIF_SHOWTIP;
+    set_tooltip(data, query_battery());
+    Shell_NotifyIconW(NIM_MODIFY, &data);
 }
 
 void App::show_menu(int x, int y) {
