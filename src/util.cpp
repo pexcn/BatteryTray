@@ -54,15 +54,17 @@ bool system_uses_light_theme() {
     return value == 1;
 }
 
+// A unit is set off from its digits the way every other number in the UI sets
+// one off, Latin or Chinese alike: 6.3 W, 每 1%, 3 分 58 秒.
 std::wstring format_duration(double seconds) {
     const long long total = static_cast<long long>(seconds);
     if (total >= 3600) {
-        return std::to_wstring(total / 3600) + L"小时" + std::to_wstring(total % 3600 / 60) + L"分";
+        return std::to_wstring(total / 3600) + L" 小时 " + std::to_wstring(total % 3600 / 60) + L" 分";
     }
     if (total >= 60) {
-        return std::to_wstring(total / 60) + L"分" + std::to_wstring(total % 60) + L"秒";
+        return std::to_wstring(total / 60) + L" 分 " + std::to_wstring(total % 60) + L" 秒";
     }
-    return std::to_wstring(total) + L"秒";
+    return std::to_wstring(total) + L" 秒";
 }
 
 } // namespace bt
