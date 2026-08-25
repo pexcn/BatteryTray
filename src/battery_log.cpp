@@ -102,11 +102,11 @@ void BatteryLog::stop() {
     enabled_ = false;
 }
 
-void BatteryLog::append_status(std::wstring_view display, bool charging) {
+void BatteryLog::append_status(std::wstring_view display, ChargeState charge) {
     if (!enabled_) {
         return;
     }
-    std::wstring line = charging ? L"正在充电" : L"使用电池";
+    std::wstring line = charge_state_text(charge);
     line += L" -> ";
     line += display;
     line += L'%';

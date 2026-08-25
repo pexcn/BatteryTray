@@ -13,15 +13,15 @@ void BatteryHistory::push(const BatteryStep& step) noexcept {
     }
 }
 
-void BatteryHistory::observe(int percent, bool charging) {
+void BatteryHistory::observe(int percent, ChargeState charge) {
     // GetTickCount64 rather than QueryUnbiasedInterruptTime: this measures how
     // long a percent lasted in wall clock terms, and the suspend that would
     // corrupt that is dropped by discard_pending instead.
     const unsigned long long now = GetTickCount64();
 
-    if (last_percent_ < 0 || charging != last_charging_) {
-        // Plugging or unplugging splits the list: the step in progress straddles
-        // the change, and charge steps do not belong beside discharge steps.
+    if (last_percent_ < 0 || charge != last_charge_) {
+        // Any move between charge states splits the list: the step in progress
+        // straddles it, and charge steps do not belong beside discharge steps.
         clear();
     } else if (percent != last_percent_) {
         const bool rising = percent > last_percent_;
@@ -40,7 +40,7 @@ void BatteryHistory::observe(int percent, bool charging) {
     marked_ms_ = now;
     pending_ = true;
     last_percent_ = percent;
-    last_charging_ = charging;
+    last_charge_ = charge;
 }
 
 } // namespace bt

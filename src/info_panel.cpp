@@ -369,7 +369,7 @@ void InfoPanel::paint(HDC dc, const RECT& client) const {
     DrawTextW(dc, percent.c_str(), -1, &line, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
     SelectObject(dc, font_.get());
     SetTextColor(dc, colors_.secondary);
-    DrawTextW(dc, state_.charging ? L"正在充电" : L"使用电池", -1, &line,
+    DrawTextW(dc, charge_state_text(state_.charge), -1, &line,
               DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
     y += title_height_;
 

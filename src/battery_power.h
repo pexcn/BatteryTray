@@ -5,11 +5,25 @@
 
 namespace bt {
 
-// What GetSystemPowerStatus can answer: whole percent, and whether the charger
-// is in. Everything below it comes from the battery driver instead.
+// A plugged in pack is in one of three situations and the shell names all
+// three; collapsing them into "the charger is in" is what made a full battery
+// report as charging.
+enum class ChargeState {
+    Discharging,
+    Charging,
+    Full,
+    PluggedIn, // on AC below full, held there by a vendor charge threshold
+};
+
+// One wording for the four states, shared by the tooltip, the panel and the
+// log so that the same situation never gets two names.
+const wchar_t* charge_state_text(ChargeState charge);
+
+// What GetSystemPowerStatus can answer: whole percent, and what the charger is
+// doing. Everything below it comes from the battery driver instead.
 struct BatteryState {
     int percent = 100; // 255 ("unknown", what a machine with no battery reports) becomes 100
-    bool charging = false;
+    ChargeState charge = ChargeState::Discharging;
 };
 
 BatteryState query_battery_state();

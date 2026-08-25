@@ -1,5 +1,7 @@
 #pragma once
 
+#include "battery_power.h"
+
 #include <string>
 #include <string_view>
 
@@ -17,7 +19,7 @@ public:
     void start();
     void stop();
 
-    void append_status(std::wstring_view display, bool charging);
+    void append_status(std::wstring_view display, ChargeState charge);
 
 private:
     bool enabled_ = false;

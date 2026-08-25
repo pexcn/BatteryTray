@@ -1,5 +1,7 @@
 #pragma once
 
+#include "battery_power.h"
+
 #include <cstddef>
 
 namespace bt {
@@ -19,7 +21,7 @@ struct BatteryStep {
 class BatteryHistory {
 public:
     // Fed every reading the tray takes; only a moved percentage records a step.
-    void observe(int percent, bool charging);
+    void observe(int percent, ChargeState charge);
 
     // The step in progress spans a suspend, so its duration is wall clock and
     // not use - eight hours for one percent says nothing. Drop it.
@@ -43,7 +45,7 @@ private:
     size_t newest_ = 0;
     unsigned long long marked_ms_ = 0;
     int last_percent_ = -1;
-    bool last_charging_ = false;
+    ChargeState last_charge_ = ChargeState::Discharging;
     bool pending_ = false; // is the interval since marked_ms_ worth recording
 };
 

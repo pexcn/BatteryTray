@@ -31,7 +31,24 @@ bool query_information(HANDLE device, ULONG tag, BATTERY_QUERY_INFORMATION_LEVEL
                            &returned, nullptr) != 0;
 }
 
+// BatteryFlag bit 3. The SDK gives none of the BatteryFlag bits a name, so this
+// is spelled out rather than borrowed from a header.
+constexpr BYTE kChargingFlag = 0x08;
+
 } // namespace
+
+const wchar_t* charge_state_text(ChargeState charge) {
+    switch (charge) {
+    case ChargeState::Charging:
+        return L"正在充电";
+    case ChargeState::Full:
+        return L"电池已充满";
+    case ChargeState::PluggedIn:
+        return L"已接通电源";
+    default:
+        return L"使用电池";
+    }
+}
 
 BatteryState query_battery_state() {
     SYSTEM_POWER_STATUS status{};
@@ -41,7 +58,16 @@ BatteryState query_battery_state() {
     BatteryState state;
     // Like the original, treat "unknown" as full rather than showing nothing.
     state.percent = status.BatteryLifePercent == 255 ? 100 : static_cast<int>(status.BatteryLifePercent);
-    state.charging = status.ACLineStatus == 1;
+    // Charging comes from BatteryFlag, not from ACLineStatus: the line stays
+    // online after the pack tops off, and this is the bit the shell's own
+    // battery flyout reads, so the two cannot disagree on screen. Nothing
+    // marks the two idle-on-AC states apart -- a pack stopped at a vendor
+    // charge threshold looks exactly like a full one, save for the percent.
+    if ((status.BatteryFlag & kChargingFlag) != 0) {
+        state.charge = ChargeState::Charging;
+    } else if (status.ACLineStatus == 1) {
+        state.charge = state.percent >= 100 ? ChargeState::Full : ChargeState::PluggedIn;
+    }
     return state;
 }
 

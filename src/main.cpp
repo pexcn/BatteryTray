@@ -47,7 +47,8 @@ std::wstring display_text(int percent) {
 // one percent lasts is the info panel's job -- a figure extrapolated from a
 // single instant is worth reading only next to the measured steps beside it.
 std::wstring build_tooltip(const BatteryState& state) {
-    std::wstring tip = state.charging ? L"正在充电：" : L"使用电池：";
+    std::wstring tip = charge_state_text(state.charge);
+    tip += L'：';
     tip += display_text(state.percent);
     tip += L'%';
 
@@ -67,8 +68,8 @@ std::wstring build_tooltip(const BatteryState& state) {
         return tip;
     }
 
-    // Direction comes from the rate, not from ACLineStatus: a full pack on AC
-    // is plugged in without charging.
+    // Direction comes from the rate, not from the charge state: the two agree
+    // on which way the energy moves, but only the rate says how fast.
     const bool charging = sample.rate_mw > 0;
 
     // One measurement per line, all of them split by the same colon: the shell
@@ -126,7 +127,7 @@ private:
     InfoPanel panel_;
     HPOWERNOTIFY power_notify_ = nullptr;
     int last_percent_ = -1;
-    bool last_charging_ = false;
+    ChargeState last_charge_ = ChargeState::Discharging;
     bool has_last_ = false;
 };
 
@@ -272,8 +273,8 @@ void App::refresh(bool force) {
     // Fed unconditionally: the ring itself ignores readings that did not move,
     // and it has to keep filling while the panel is closed - that is what makes
     // the elapsed steps there worth anything the moment it opens.
-    history_.observe(state.percent, state.charging);
-    const bool changed = !has_last_ || state.percent != last_percent_ || state.charging != last_charging_;
+    history_.observe(state.percent, state.charge);
+    const bool changed = !has_last_ || state.percent != last_percent_ || state.charge != last_charge_;
     // Power events repeat; rebuilding the icon for an unchanged reading would be
     // the only work this program ever does at idle.
     if (!changed && !force) {
@@ -308,9 +309,9 @@ void App::refresh(bool force) {
         return;
     }
     last_percent_ = state.percent;
-    last_charging_ = state.charging;
+    last_charge_ = state.charge;
     has_last_ = true;
-    log_.append_status(text, state.charging);
+    log_.append_status(text, state.charge);
 }
 
 void App::refresh_tooltip() {
