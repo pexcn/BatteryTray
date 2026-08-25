@@ -30,7 +30,7 @@ inline constexpr wchar_t kDefaultFace[] = L"Segoe UI";
 class IconRenderer {
 public:
     explicit IconRenderer(COLORREF text_color, int fill_percent = kDefaultFillPercent,
-                          PCWSTR face = kDefaultFace, int supersample = 1);
+                          PCWSTR face = kDefaultFace, int supersample = 1, int gamma_percent = 100);
 
     // Caller owns the icon; empty on failure.
     [[nodiscard]] unique_icon render(std::wstring_view text, UINT dpi);
@@ -47,6 +47,7 @@ private:
     wchar_t face_[LF_FACESIZE];
     wchar_t resolved_face_[LF_FACESIZE] = {}; // TEMPORARY: see resolved_face()
     int supersample_;
+    BYTE coverage_curve_[256]; // gamma correction applied to the rasterized coverage
     unique_dc dc_;
     unique_font font_;
     UINT font_dpi_ = 0;

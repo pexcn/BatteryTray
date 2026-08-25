@@ -1,6 +1,7 @@
 #include "tray_icon.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cwchar>
 #include <vector>
 
@@ -16,10 +17,22 @@ constexpr int kMinimumEmSize = 6;
 
 } // namespace
 
-IconRenderer::IconRenderer(COLORREF text_color, int fill_percent, PCWSTR face, int supersample)
+IconRenderer::IconRenderer(COLORREF text_color, int fill_percent, PCWSTR face, int supersample,
+                           int gamma_percent)
     : text_color_(text_color), fill_percent_(fill_percent), supersample_(std::max(supersample, 1)),
       dc_(CreateCompatibleDC(nullptr)) {
     wcscpy_s(face_, face);
+
+    // Coverage comes out of the rasterizer linear, and using it as alpha
+    // directly is what makes light text on a dark taskbar look thinner than the
+    // same glyphs the shell draws: ClearType applies a gamma correction that
+    // biases partial coverage upward. Bake the same curve into a table so the
+    // per-pixel loop stays a lookup.
+    const double exponent = 100.0 / std::max(gamma_percent, 1);
+    for (int i = 0; i < 256; ++i) {
+        const double corrected = std::pow(i / 255.0, exponent) * 255.0 + 0.5;
+        coverage_curve_[i] = static_cast<BYTE>(std::min(corrected, 255.0));
+    }
 }
 
 void IconRenderer::ensure_font(UINT dpi) {
@@ -165,7 +178,7 @@ unique_icon IconRenderer::render(std::wstring_view text, UINT dpi) {
                     sum += row[sx * 4]; // grayscale AA: all three channels agree
                 }
             }
-            const int coverage = (sum + taps / 2) / taps;
+            const int coverage = coverage_curve_[(sum + taps / 2) / taps];
             // Premultiplied BGRA: icons built from a 32bpp DIB are composited the
             // AlphaBlend way, and straight alpha would light up the glyph edges.
             pixel[0] = static_cast<BYTE>((blue * coverage + 127) / 255);
