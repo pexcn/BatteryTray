@@ -26,7 +26,10 @@ constexpr int kPaddingDip = 14;
 constexpr int kRowGapDip = 8;
 constexpr int kSeparatorDip = 13;
 constexpr int kIndentDip = 12;
-constexpr int kCornerDip = 8;
+// Small on purpose. A window region is a one-bit clip, so the arc comes out as
+// a staircase, and the wider the radius the more steps there are to notice - a
+// tight corner reads as rounded without ever showing how it was cut.
+constexpr int kCornerDip = 4;
 constexpr int kEdgeGapDip = 8; // breathing room against the taskbar
 
 } // namespace
@@ -49,9 +52,9 @@ InfoPanel::~InfoPanel() {
 
 void InfoPanel::toggle(HWND owner, UINT icon_id) {
     // Clicking the tray icon takes the foreground away from the panel first, so
-    // by the time the second click's message arrives it has already hidden
-    // itself on WM_ACTIVATE. Without this window a double click on an open panel
-    // would close and immediately reopen it, which reads as "nothing happened".
+    // by the time the click reaches us the panel has already hidden itself on
+    // WM_ACTIVATE. Without this window a click on an open panel would close and
+    // immediately reopen it, which reads as "nothing happened".
     if (visible_ || GetTickCount64() - hidden_ms_ < 500) {
         hide();
         return;
@@ -204,7 +207,7 @@ void InfoPanel::build_rows() {
         // AC is plugged in with nothing flowing.
         const bool charging = rate_mw_ > 0;
         swprintf_s(buffer, L"%.1f W", magnitude / 1000.0);
-        rows_.push_back({RowStyle::Entry, charging ? L"充电功率" : L"当前功耗", buffer});
+        rows_.push_back({RowStyle::Entry, charging ? L"充电功率" : L"实时功耗", buffer});
 
         if (full_mwh != 0) {
             rows_.push_back(
@@ -313,12 +316,12 @@ POINT InfoPanel::anchor_origin(SIZE size) const {
 
         if (side < 2) {
             // Taskbar across the top or bottom: hug that edge of the work area,
-            // and line the panel up with the icon along the other axis.
+            // and centre the panel on the icon along the other axis.
             origin.y = side == 0 ? work.top + gap : work.bottom - gap - size.cy;
-            origin.x = anchor.right - size.cx;
+            origin.x = center_x - size.cx / 2;
         } else {
             origin.x = side == 2 ? work.left + gap : work.right - gap - size.cx;
-            origin.y = anchor.bottom - size.cy;
+            origin.y = center_y - size.cy / 2;
         }
     }
 

@@ -207,11 +207,11 @@ LRESULT App::handle_message(UINT message, WPARAM wparam, LPARAM lparam) {
         case WM_CONTEXTMENU:
             show_menu(GET_X_LPARAM(wparam), GET_Y_LPARAM(wparam));
             break;
-        case WM_LBUTTONDBLCLK:
+        case NIN_SELECT:
         case NIN_KEYSELECT:
-            // Double click only. A single click on a tray icon is the easiest
-            // thing on the taskbar to hit by accident, and NIN_KEYSELECT is the
-            // keyboard's equivalent of the double click.
+            // A single click, the way the shell's own battery icon opens its
+            // flyout. NOTIFYICON_VERSION_4 turns the left click into NIN_SELECT
+            // and its keyboard equivalent into NIN_KEYSELECT.
             panel_.toggle(window_, kTrayIconId);
             break;
         case NIN_POPUPOPEN:
