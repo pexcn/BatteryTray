@@ -71,6 +71,9 @@ void IconRenderer::ensure_font(UINT dpi) {
         }
 
         const HGDIOBJ previous = SelectObject(dc_.get(), candidate.get());
+        // TEMPORARY: CreateFontIndirectW substitutes silently for a face that is
+        // not installed, so read back what GDI actually picked.
+        GetTextFaceW(dc_.get(), LF_FACESIZE, resolved_face_);
         TEXTMETRICW text_metrics{};
         int widest = 0;
         if (GetTextMetricsW(dc_.get(), &text_metrics)) {

@@ -293,7 +293,7 @@ void App::refresh(bool force) {
     }
     // TEMPORARY: the knob values ride along so side by side copies stay apart.
     swprintf_s(data.szTip, L"%s：%s%%（fill=%d%% %s x%d）", state.charging ? L"正在充电" : L"使用电池",
-               text.c_str(), g_fill_percent, g_face, g_supersample);
+               text.c_str(), g_fill_percent, renderer_.resolved_face(), g_supersample);
     Shell_NotifyIconW(NIM_MODIFY, &data);
 
     // Only now is the previous icon safe to destroy: the shell has been handed

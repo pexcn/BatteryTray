@@ -35,12 +35,17 @@ public:
     // Caller owns the icon; empty on failure.
     [[nodiscard]] unique_icon render(std::wstring_view text, UINT dpi);
 
+    // TEMPORARY: the face GDI settled on, which is not necessarily the one asked
+    // for; only valid after a render.
+    [[nodiscard]] PCWSTR resolved_face() const { return resolved_face_; }
+
 private:
     void ensure_font(UINT dpi);
 
     COLORREF text_color_;
     int fill_percent_;
     wchar_t face_[LF_FACESIZE];
+    wchar_t resolved_face_[LF_FACESIZE] = {}; // TEMPORARY: see resolved_face()
     int supersample_;
     unique_dc dc_;
     unique_font font_;
