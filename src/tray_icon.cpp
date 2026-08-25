@@ -25,10 +25,11 @@ constexpr int kMinimumEmSize = 6;
 // interact -- changing one means re-checking the others.
 //
 // Only the fitted em is visible in the end, and it moves in steps of
-// kSupersample, so a range of percentages maps to the same result; this one sits
-// where the budget still admits the larger candidate rather than just missing
-// it.
-constexpr int kFillPercent = 92;
+// kSupersample, so a range of percentages maps to the same result -- which cuts
+// both ways: a couple of points either side can change nothing at all, or drop
+// the fit a whole step. Which one it does depends on the DPI and the face's
+// metrics, so look at the tray after touching this.
+constexpr int kFillPercent = 90;
 
 // Rasterize this many times larger and average back down. Hinting can snap
 // stems to the pixel grid but never a diagonal, so 7 came out as a stack of
@@ -170,10 +171,10 @@ unique_icon IconRenderer::render(std::wstring_view text, UINT dpi) {
 
     SIZE size{};
     const int length = static_cast<int>(text.size());
-    const int x = GetTextExtentPoint32W(dc_.get(), text.data(), length, &size)
-                      ? (width_ - static_cast<int>(size.cx)) / 2
-                      : 0;
-    TextOutW(dc_.get(), x, baseline_, text.data(), length);
+    const int text_x = GetTextExtentPoint32W(dc_.get(), text.data(), length, &size)
+                           ? (width_ - static_cast<int>(size.cx)) / 2
+                           : 0;
+    TextOutW(dc_.get(), text_x, baseline_, text.data(), length);
     GdiFlush(); // DIB bits are only guaranteed to be written back after this
 
     SelectObject(dc_.get(), previous_font);
