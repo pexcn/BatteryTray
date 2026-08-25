@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cwchar>
 
 namespace bt {
 namespace {
@@ -22,21 +23,28 @@ constexpr UINT kTimerId = 1;
 constexpr UINT kTimerIntervalMs = 2000;
 
 // Device independent pixels; everything on screen goes through scale(). The
-// numbers are the shell's own flyout metrics: 16 of padding, rows a good deal
-// taller than the text in them, and a panel wide enough that the longest value
-// still sits well clear of its label.
+// numbers are the shell's own flyout metrics: 20 of padding, rows a good deal
+// taller than the text in them, sections told apart by air rather than by
+// rules, and a panel wide enough that the longest value clears its label.
 constexpr int kWidthDip = 320; // fixed, sized for the longest label plus its value
-constexpr int kPaddingDip = 16;
+constexpr int kPaddingDip = 20;
 constexpr int kRowGapDip = 10;
-constexpr int kSeparatorDip = 17;
+constexpr int kGapDip = 16;   // between sections
+constexpr int kInlineDip = 8; // between the glyph, the percentage and its caption
 constexpr int kIndentDip = 14;
-constexpr int kCornerDip = 8;
 constexpr int kEdgeGapDip = 12; // breathing room against the taskbar
 
 // lfMessageFont is 9pt, which is the size Win32 dialogs use; the shell's own
-// flyouts set body text a size larger and the headline value at twice that.
+// flyouts set body text a size larger and the headline value at three times
+// that, in a light weight - the big thin percentage is the flyout's signature.
 constexpr int kBodyScaleNumerator = 7;
 constexpr int kBodyScaleDenominator = 6;
+constexpr int kTitleScale = 3;
+constexpr int kGlyphPercent = 62; // of the headline height
+
+// The battery pictograph beside the percentage. Segoe MDL2 Assets ships with
+// Windows 10 and is still present on 11, unlike Segoe Fluent Icons.
+constexpr wchar_t kGlyphFace[] = L"Segoe MDL2 Assets";
 
 // DWM attributes that only exist on Windows 11, spelled out rather than taken
 // from dwmapi.h so an older SDK still compiles. An unsupported attribute fails
@@ -46,23 +54,33 @@ constexpr DWORD kDwmWindowCornerPreference = 33;
 constexpr DWORD kDwmBorderColor = 34;
 constexpr DWORD kDwmCornerRound = 2; // DWMWCP_ROUND
 
-// Fade in the way the shell's flyouts do, but only when the user has left
-// animations on - SPI_GETCLIENTAREAANIMATION is the setting that turns them off.
-constexpr DWORD kFadeMs = 130;
+// Rise out of the taskbar the way the shell's flyouts do, but only when the
+// user has left animations on - SPI_GETCLIENTAREAANIMATION is the setting that
+// turns them off.
+constexpr DWORD kSlideMs = 200;
+
+// Segoe MDL2 Assets battery glyphs. Two codepoint tables for this font are in
+// circulation and they disagree by one about where the charging series starts,
+// so both ranges below stay inside the span the two of them agree on: E850 is
+// an empty battery in either, and E85B..E862 carries the charging bolt in
+// either. The cost is one bar of resolution, which nobody can see.
+wchar_t battery_glyph(int percent, bool charging) {
+    const int clamped = std::clamp(percent, 0, 100);
+    const int step = charging ? (clamped * 7 + 50) / 100 : (clamped * 9 + 50) / 100;
+    return static_cast<wchar_t>((charging ? 0xE85B : 0xE850) + step);
+}
 
 } // namespace
 
 InfoPanel::InfoPanel(HINSTANCE instance, const BatteryHistory& history, bool light_theme)
     : instance_(instance), history_(history), light_theme_(light_theme) {
-    // The shell's own menu and flyout surfaces, read off the Windows 11 palette:
-    // #2C2C2C / #F9F9F9 for the background, secondary text at roughly 60% of the
-    // way to it, and a divider barely a shade off the surface. Two flat sets
-    // rather than anything theme aware at runtime, matching the tray icon's
-    // read-once colour (see util::system_uses_light_theme).
-    colors_ = light_theme ? Palette{RGB(249, 249, 249), RGB(26, 26, 26), RGB(94, 94, 94), RGB(229, 229, 229),
-                                    RGB(217, 217, 217)}
-                          : Palette{RGB(44, 44, 44), RGB(255, 255, 255), RGB(205, 205, 205),
-                                    RGB(62, 62, 62), RGB(66, 66, 66)};
+    // The surfaces the shell's own flyouts sit on: #2B2B2B / #F2F2F2, with
+    // secondary text about 60% of the way from the primary colour to the
+    // background. Two flat sets rather than anything theme aware at runtime,
+    // matching the tray icon's read-once colour (see system_uses_light_theme).
+    // The border is Windows 11's hairline only; Windows 10 flyouts have none.
+    colors_ = light_theme ? Palette{RGB(242, 242, 242), RGB(26, 26, 26), RGB(94, 94, 94), RGB(217, 217, 217)}
+                          : Palette{RGB(43, 43, 43), RGB(255, 255, 255), RGB(205, 205, 205), RGB(66, 66, 66)};
 }
 
 InfoPanel::~InfoPanel() {
@@ -113,11 +131,11 @@ bool InfoPanel::ensure_window() {
         return false;
     }
 
-    // Let DWM round and outline the window instead of doing either by hand. It
-    // is the same rounding the shell gives its own flyouts, it is antialiased
-    // against whatever is behind the panel, and the hairline border comes with
-    // it. Windows 10 has none of these attributes and fails the call, which is
-    // what picks the hand cut region and the drawn border further down.
+    // Let DWM round and outline the window rather than doing either by hand:
+    // that is the rounding the shell gives its own flyouts, antialiased against
+    // whatever is behind the panel, and the hairline border comes with it.
+    // Windows 10 has none of these attributes and fails the call - which is
+    // correct there, because its flyouts are square and borderless.
     const DWORD corner = kDwmCornerRound;
     dwm_rounded_ =
         SUCCEEDED(DwmSetWindowAttribute(window_, kDwmWindowCornerPreference, &corner, sizeof(corner)));
@@ -148,9 +166,15 @@ void InfoPanel::ensure_fonts() {
     LOGFONTW body = metrics.lfMessageFont;
     body.lfHeight = MulDiv(body.lfHeight, kBodyScaleNumerator, kBodyScaleDenominator);
     LOGFONTW title = body;
-    title.lfHeight *= 2; // the percentage leads the panel
+    title.lfHeight *= kTitleScale;
+    title.lfWeight = FW_LIGHT; // the headline is thin, not big and bold
+    LOGFONTW glyph{};
+    glyph.lfHeight = MulDiv(title.lfHeight, kGlyphPercent, 100);
+    glyph.lfCharSet = DEFAULT_CHARSET;
+    wcscpy_s(glyph.lfFaceName, kGlyphFace);
     font_.reset(CreateFontIndirectW(&body));
     title_font_.reset(CreateFontIndirectW(&title));
+    glyph_font_.reset(CreateFontIndirectW(&glyph));
     font_dpi_ = dpi_;
 
     const unique_dc dc(CreateCompatibleDC(nullptr));
@@ -164,6 +188,13 @@ void InfoPanel::ensure_fonts() {
     SelectObject(dc.get(), title_font_.get());
     GetTextMetricsW(dc.get(), &text_metrics);
     title_height_ = text_metrics.tmHeight;
+    // The glyphs are all one width, so measuring any of them lays out the row.
+    SelectObject(dc.get(), glyph_font_.get());
+    GetTextMetricsW(dc.get(), &text_metrics);
+    header_height_ = std::max(title_height_, static_cast<int>(text_metrics.tmHeight));
+    SIZE extent{};
+    const wchar_t sample = battery_glyph(100, false);
+    glyph_width_ = GetTextExtentPoint32W(dc.get(), &sample, 1, &extent) ? extent.cx : 0;
     SelectObject(dc.get(), previous);
 }
 
@@ -183,9 +214,12 @@ void InfoPanel::show() {
     // and a hide arriving in the middle has to find the panel consistent.
     visible_ = true;
     SetTimer(window_, kTimerId, kTimerIntervalMs, nullptr);
+    // Rises from the taskbar edge, so the direction follows wherever the taskbar
+    // is - the same movement the shell's flyouts make.
+    constexpr DWORD kSlideFrom[] = {AW_VER_POSITIVE, AW_VER_NEGATIVE, AW_HOR_POSITIVE, AW_HOR_NEGATIVE};
     BOOL animate = TRUE;
     SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animate, 0);
-    if (!animate || !AnimateWindow(window_, kFadeMs, AW_BLEND)) {
+    if (!animate || !AnimateWindow(window_, kSlideMs, AW_SLIDE | kSlideFrom[taskbar_side_])) {
         ShowWindow(window_, SW_SHOW);
     }
     // Focus is what makes WM_ACTIVATE arrive, and losing it is how the panel
@@ -245,10 +279,10 @@ void InfoPanel::build_rows() {
     wchar_t buffer[64];
 
     // Unavailable fields are dropped whole rather than shown as a placeholder,
-    // and a section with nothing left in it takes its separator with it: a
-    // stranded rule would only advertise what the firmware refuses to answer.
+    // and a section with nothing left in it takes its leading gap with it: an
+    // empty band would only advertise what the firmware refuses to answer.
     size_t mark = rows_.size();
-    rows_.push_back({RowStyle::Separator, {}, {}});
+    rows_.push_back({RowStyle::Gap, {}, {}});
     const long magnitude = rate_mw_ < 0 ? -rate_mw_ : rate_mw_;
     const unsigned long full_mwh = device_.facts().full_charge_mwh;
     if (has_sample_ && magnitude != 0) {
@@ -276,7 +310,7 @@ void InfoPanel::build_rows() {
 
     // The measured steps always get their section: an empty list is a fact about
     // this session, not about the machine, and it fills in as it runs.
-    rows_.push_back({RowStyle::Separator, {}, {}});
+    rows_.push_back({RowStyle::Gap, {}, {}});
     rows_.push_back({RowStyle::Heading, L"最近实测", {}});
     const size_t steps = std::min<size_t>(history_.size(), 3);
     for (size_t i = 0; i < steps; ++i) {
@@ -289,7 +323,7 @@ void InfoPanel::build_rows() {
     }
 
     mark = rows_.size();
-    rows_.push_back({RowStyle::Separator, {}, {}});
+    rows_.push_back({RowStyle::Gap, {}, {}});
     const BatteryFacts& facts = device_.facts();
     if (facts.cycle_count != 0) {
         rows_.push_back({RowStyle::Entry, L"循环次数", std::to_wstring(facts.cycle_count) + L" 次"});
@@ -314,20 +348,20 @@ void InfoPanel::build_rows() {
 }
 
 int InfoPanel::row_height(RowStyle style) const {
-    return style == RowStyle::Separator ? scale(kSeparatorDip) : line_height_ + scale(kRowGapDip);
+    return style == RowStyle::Gap ? scale(kGapDip) : line_height_ + scale(kRowGapDip);
 }
 
 SIZE InfoPanel::measure() const {
     // Height has to come out of the rows that survived the rules above, which is
     // why nothing about the window size can be decided at creation time.
-    int height = scale(kPaddingDip) * 2 + title_height_;
+    int height = scale(kPaddingDip) * 2 + header_height_;
     for (const Row& row : rows_) {
         height += row_height(row.style);
     }
     return {scale(kWidthDip), height};
 }
 
-POINT InfoPanel::anchor_origin(SIZE size) const {
+POINT InfoPanel::anchor_origin(SIZE size) {
     RECT anchor{};
     NOTIFYICONIDENTIFIER identifier{};
     identifier.cbSize = sizeof(identifier);
@@ -362,6 +396,7 @@ POINT InfoPanel::anchor_origin(SIZE size) const {
         const LONG distance[] = {center_y - work.top, work.bottom - center_y, center_x - work.left,
                                  work.right - center_x};
         const int side = static_cast<int>(std::min_element(distance, distance + 4) - distance);
+        taskbar_side_ = side; // the side the panel will animate in from
 
         if (side < 2) {
             // Taskbar across the top or bottom: hug that edge of the work area,
@@ -385,14 +420,9 @@ void InfoPanel::relayout() {
     build_rows();
     const SIZE size = measure();
 
-    // Only where DWM would not round the window itself: a region is a hard
-    // one-bit clip, so its corners are visibly stepped next to the composited
-    // ones. On Windows 11 the corners are DWM's and the region stays unset.
-    if (!dwm_rounded_) {
-        const int corner = scale(kCornerDip) * 2;
-        SetWindowRgn(window_, CreateRoundRectRgn(0, 0, size.cx + 1, size.cy + 1, corner, corner), FALSE);
-    }
-
+    // No window region: on Windows 11 DWM rounds the panel itself, and on
+    // Windows 10 the flyout this imitates is a plain rectangle. Cutting the
+    // corners by hand would only add stair steps that neither system has.
     const POINT origin = anchor_origin(size);
     SetWindowPos(window_, HWND_TOPMOST, origin.x, origin.y, size.cx, size.cy, SWP_NOACTIVATE);
     InvalidateRect(window_, nullptr, FALSE);
@@ -400,47 +430,45 @@ void InfoPanel::relayout() {
 
 void InfoPanel::paint(HDC dc, const RECT& client) const {
     const unique_brush background(CreateSolidBrush(colors_.background));
-    const unique_pen border(CreatePen(PS_SOLID, 1, colors_.border));
-    if (!background || !border) {
+    if (!background) {
         return;
     }
-    HGDIOBJ previous_brush = SelectObject(dc, background.get());
-    HGDIOBJ previous_pen = SelectObject(dc, border.get());
-    if (dwm_rounded_) {
-        // The corners and the hairline are DWM's; drawing a border here would
-        // put a second outline just inside the system's own.
-        FillRect(dc, &client, background.get());
-    } else {
-        const int corner = scale(kCornerDip) * 2;
-        RoundRect(dc, client.left, client.top, client.right, client.bottom, corner, corner);
-    }
+    // A flat fill and nothing else: the border is DWM's on Windows 11 and the
+    // Windows 10 flyout has none at all.
+    FillRect(dc, &client, background.get());
 
     SetBkMode(dc, TRANSPARENT);
     const int left = scale(kPaddingDip);
     const int right = client.right - scale(kPaddingDip);
+    const int inline_gap = scale(kInlineDip);
     int y = scale(kPaddingDip);
 
-    RECT line{left, y, right, y + title_height_};
-    SelectObject(dc, title_font_.get());
+    // The headline reads the way the shell's battery flyout does: pictograph,
+    // then a big thin percentage, then the state in small type beside it -
+    // everything on one baseline band and left aligned, not spread to the edges.
+    RECT line{left, y, right, y + header_height_};
+    HGDIOBJ previous_font = SelectObject(dc, glyph_font_.get());
     SetTextColor(dc, colors_.text);
+    const wchar_t glyph = battery_glyph(state_.percent, state_.charging);
+    DrawTextW(dc, &glyph, 1, &line, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+    line.left += glyph_width_ + inline_gap;
+    SelectObject(dc, title_font_.get());
     const std::wstring percent = std::to_wstring(state_.percent) + L"%";
+    SIZE extent{};
+    GetTextExtentPoint32W(dc, percent.c_str(), static_cast<int>(percent.size()), &extent);
     DrawTextW(dc, percent.c_str(), -1, &line, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+    line.left += extent.cx + inline_gap * 2;
     SelectObject(dc, font_.get());
     SetTextColor(dc, colors_.secondary);
     DrawTextW(dc, state_.charging ? L"正在充电" : L"使用电池", -1, &line,
-              DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
-    y += title_height_;
+              DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    y += header_height_;
 
-    const unique_pen rule(CreatePen(PS_SOLID, 1, colors_.separator));
     for (const Row& row : rows_) {
         const int height = row_height(row.style);
-        if (row.style == RowStyle::Separator) {
-            if (rule) {
-                SelectObject(dc, rule.get());
-                MoveToEx(dc, left, y + height / 2, nullptr);
-                LineTo(dc, right, y + height / 2);
-            }
-        } else {
+        if (row.style != RowStyle::Gap) {
             line = {left + (row.style == RowStyle::Detail ? scale(kIndentDip) : 0), y, right, y + height};
             // Label in the primary colour, value in the secondary one, the way
             // the shell's own settings rows read: the label is what you scan
@@ -455,8 +483,8 @@ void InfoPanel::paint(HDC dc, const RECT& client) const {
         y += height;
     }
 
-    SelectObject(dc, previous_pen);
-    SelectObject(dc, previous_brush);
+    // The device context is not always ours: WM_PRINTCLIENT hands one in.
+    SelectObject(dc, previous_font);
 }
 
 LRESULT CALLBACK InfoPanel::window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {

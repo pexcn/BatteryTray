@@ -32,8 +32,8 @@ private:
     enum class RowStyle {
         Entry,     // label and value
         Heading,   // section title, no value
-        Detail,    // indented, dimmer - the elapsed steps
-        Separator, // a rule, no text
+        Detail,  // indented, dimmer - the elapsed steps
+        Gap,     // air between sections; the shell groups with space, not rules
     };
 
     struct Row {
@@ -46,7 +46,6 @@ private:
         COLORREF background;
         COLORREF text;
         COLORREF secondary;
-        COLORREF separator;
         COLORREF border;
     };
 
@@ -63,7 +62,7 @@ private:
     [[nodiscard]] int scale(int dip) const { return MulDiv(dip, static_cast<int>(dpi_), 96); }
     [[nodiscard]] int row_height(RowStyle style) const;
     [[nodiscard]] SIZE measure() const;
-    [[nodiscard]] POINT anchor_origin(SIZE size) const;
+    [[nodiscard]] POINT anchor_origin(SIZE size);
     void relayout();
     void paint(HDC dc, const RECT& client) const;
 
@@ -77,16 +76,22 @@ private:
     bool visible_ = false;
     unsigned long long hidden_ms_ = 0;
     const bool light_theme_;
-    // Windows 11 rounds and outlines the window itself; Windows 10 gets a cut
-    // region and a drawn border instead.
+    // Windows 11 rounds and outlines the window itself; on Windows 10 the flyout
+    // it is imitating is square, so nothing is drawn there.
     bool dwm_rounded_ = false;
+    // Which edge the taskbar sits on, from the last placement: 0 top, 1 bottom,
+    // 2 left, 3 right. The panel animates in from that side.
+    int taskbar_side_ = 1;
 
     UINT dpi_ = 96;
     UINT font_dpi_ = 0;
     unique_font font_;
     unique_font title_font_;
+    unique_font glyph_font_;
     int line_height_ = 0;
     int title_height_ = 0;
+    int glyph_width_ = 0;
+    int header_height_ = 0;
 
     // Held open for as long as the panel is up; see BatteryDevice.
     BatteryDevice device_;
