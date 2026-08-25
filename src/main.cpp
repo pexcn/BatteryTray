@@ -8,6 +8,8 @@
 #include <windowsx.h>
 
 #include <cstdio>
+#include <cstdlib>
+#include <cwchar>
 #include <string>
 
 #include "autostart.h"
@@ -34,12 +36,31 @@ constexpr wchar_t kSingletonMutexName[] = L"Local\\BatteryTray.singleton";
 // its icon then.
 UINT g_taskbar_created = 0;
 
+// TEMPORARY (tray glyph tuning): "--fill=85 --percent=88" overrides the box
+// budget the font is fitted into and the battery reading, so the look can be
+// judged without a battery that cooperates. Passing any argument also lifts the
+// single instance guard, which is the point: several copies with different
+// --fill values sit in the tray next to each other for comparison, and the
+// tooltip carries the value so they stay tellable apart. Revert this commit
+// once the number is settled.
+int g_forced_percent = -1;
+int g_fill_percent = kDefaultFillPercent;
+
+int parse_tuning_option(PCWSTR command_line, PCWSTR option, int fallback) {
+    const wchar_t* const found = wcsstr(command_line, option);
+    return found ? _wtoi(found + wcslen(option)) : fallback;
+}
+
 struct BatteryState {
     int percent;
     bool charging;
 };
 
 BatteryState query_battery() {
+    if (g_forced_percent >= 0) {
+        return {g_forced_percent, false}; // TEMPORARY: tuning override
+    }
+
     SYSTEM_POWER_STATUS status{};
     if (!GetSystemPowerStatus(&status)) {
         return {100, false};
@@ -80,7 +101,8 @@ COLORREF read_theme_text_color() {
 
 class App {
 public:
-    explicit App(HINSTANCE instance) : instance_(instance), renderer_(read_theme_text_color()) {}
+    explicit App(HINSTANCE instance)
+        : instance_(instance), renderer_(read_theme_text_color(), g_fill_percent) {}
 
     bool create_window();
     int run();
@@ -243,7 +265,9 @@ void App::refresh(bool force) {
         data.uFlags |= NIF_ICON;
         data.hIcon = icon.get();
     }
-    swprintf_s(data.szTip, L"%s：%s%%", state.charging ? L"正在充电" : L"使用电池", text.c_str());
+    // TEMPORARY: the fill value rides along so side by side copies stay apart.
+    swprintf_s(data.szTip, L"%s：%s%%（fill=%d%%）", state.charging ? L"正在充电" : L"使用电池", text.c_str(),
+               g_fill_percent);
     Shell_NotifyIconW(NIM_MODIFY, &data);
 
     // Only now is the previous icon safe to destroy: the shell has been handed
@@ -307,11 +331,18 @@ void App::show_menu(int x, int y) {
 
 } // namespace
 
-int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int) {
+int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE, _In_ PWSTR command_line, _In_ int) {
+    // TEMPORARY: see the tuning knobs above.
+    const bool tuning = command_line != nullptr && *command_line != L'\0';
+    if (tuning) {
+        g_fill_percent = parse_tuning_option(command_line, L"--fill=", kDefaultFillPercent);
+        g_forced_percent = parse_tuning_option(command_line, L"--percent=", -1);
+    }
+
     // Optional single instance guard: a second copy would just stack another
     // identical icon in the tray.
     const unique_kernel_handle singleton(CreateMutexW(nullptr, TRUE, kSingletonMutexName));
-    if (!singleton || GetLastError() == ERROR_ALREADY_EXISTS) {
+    if (!tuning && (!singleton || GetLastError() == ERROR_ALREADY_EXISTS)) {
         return 0;
     }
 

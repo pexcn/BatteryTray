@@ -7,12 +7,20 @@
 
 namespace bt {
 
+// Fitting the widest content edge to edge makes the digits look oversized next
+// to the shell's own tray glyphs, which all keep a margin inside their box.
+// Leaving a tenth of the box unused lands between that and the noticeably small
+// result of rendering large text and letting the shell scale the bitmap down.
+// Do not trade this margin for a heavier weight: a smaller em with more stroke
+// fills in the counters of 8 and 0 at tray sizes, which reads worse than either.
+inline constexpr int kDefaultFillPercent = 90;
+
 // Turns the battery text (L"87", L"FL") into a notification-area sized HICON.
 // The fitted font and the measuring DC are kept across renders because a render
 // happens on every battery change and creating GDI objects there is pure waste.
 class IconRenderer {
 public:
-    explicit IconRenderer(COLORREF text_color);
+    explicit IconRenderer(COLORREF text_color, int fill_percent = kDefaultFillPercent);
 
     // Caller owns the icon; empty on failure.
     [[nodiscard]] unique_icon render(std::wstring_view text, UINT dpi);
@@ -21,6 +29,7 @@ private:
     void ensure_font(UINT dpi);
 
     COLORREF text_color_;
+    int fill_percent_;
     unique_dc dc_;
     unique_font font_;
     UINT font_dpi_ = 0;

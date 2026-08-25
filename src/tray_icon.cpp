@@ -14,18 +14,10 @@ constexpr std::wstring_view kWidestSamples[] = {L"88", L"FL"};
 constexpr int kFallbackIconSize = 16;
 constexpr int kMinimumEmSize = 6;
 
-// Fitting the widest content edge to edge makes the digits look oversized next
-// to the shell's own tray glyphs, which all keep a margin inside their box.
-// Leaving a tenth of the box unused lands between that and the noticeably small
-// result of rendering large text and letting the shell scale the bitmap down.
-// Do not trade this margin for a heavier weight: a smaller em with more stroke
-// fills in the counters of 8 and 0 at tray sizes, which reads worse than either.
-constexpr int kFillPercent = 90;
-
 } // namespace
 
-IconRenderer::IconRenderer(COLORREF text_color)
-    : text_color_(text_color), dc_(CreateCompatibleDC(nullptr)) {}
+IconRenderer::IconRenderer(COLORREF text_color, int fill_percent)
+    : text_color_(text_color), fill_percent_(fill_percent), dc_(CreateCompatibleDC(nullptr)) {}
 
 void IconRenderer::ensure_font(UINT dpi) {
     if (font_ && dpi == font_dpi_) {
@@ -62,8 +54,8 @@ void IconRenderer::ensure_font(UINT dpi) {
         return;
     }
 
-    const int width_budget = std::max(width_ * kFillPercent / 100, 1);
-    const int height_budget = std::max(height_ * kFillPercent / 100, 1);
+    const int width_budget = std::max(width_ * fill_percent_ / 100, 1);
+    const int height_budget = std::max(height_ * fill_percent_ / 100, 1);
 
     for (int em = height_; em >= kMinimumEmSize; --em) {
         base.lfHeight = -em;
