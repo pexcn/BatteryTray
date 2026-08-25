@@ -32,7 +32,7 @@ private:
     enum class RowStyle {
         Entry,     // label and value
         Heading,   // section title, no value
-        Detail,    // indented, dimmer - the elapsed steps
+        Detail,    // dimmer than Entry, sits under a Heading - the elapsed steps
         Separator, // a rule, no text
     };
 

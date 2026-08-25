@@ -25,7 +25,6 @@ constexpr int kWidthDip = 268; // fixed, sized for the longest label plus its va
 constexpr int kPaddingDip = 14;
 constexpr int kRowGapDip = 8;
 constexpr int kSeparatorDip = 13;
-constexpr int kIndentDip = 12;
 // Small on purpose. A window region is a one-bit clip, so the arc comes out as
 // a staircase, and the wider the radius the more steps there are to notice. At
 // this radius the corner is barely more than a chamfer - it takes the hard
@@ -384,7 +383,7 @@ void InfoPanel::paint(HDC dc, const RECT& client) const {
                 LineTo(dc, right, y + height / 2);
             }
         } else {
-            line = {left + (row.style == RowStyle::Detail ? scale(kIndentDip) : 0), y, right, y + height};
+            line = {left, y, right, y + height};
             SetTextColor(dc, colors_.secondary);
             DrawTextW(dc, row.label.c_str(), -1, &line, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
             if (!row.value.empty()) {
