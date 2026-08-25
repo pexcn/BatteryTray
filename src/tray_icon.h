@@ -30,7 +30,7 @@ inline constexpr wchar_t kDefaultFace[] = L"Segoe UI";
 class IconRenderer {
 public:
     explicit IconRenderer(COLORREF text_color, int fill_percent = kDefaultFillPercent,
-                          PCWSTR face = kDefaultFace);
+                          PCWSTR face = kDefaultFace, int supersample = 1);
 
     // Caller owns the icon; empty on failure.
     [[nodiscard]] unique_icon render(std::wstring_view text, UINT dpi);
@@ -41,10 +41,13 @@ private:
     COLORREF text_color_;
     int fill_percent_;
     wchar_t face_[LF_FACESIZE];
+    int supersample_;
     unique_dc dc_;
     unique_font font_;
     UINT font_dpi_ = 0;
-    int width_ = 0;
+    int icon_width_ = 0;  // what the tray gets
+    int icon_height_ = 0;
+    int width_ = 0;       // what the glyphs are rasterized into, supersample_ times larger
     int height_ = 0;
     int baseline_ = 0;
 };
