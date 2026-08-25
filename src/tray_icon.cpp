@@ -15,17 +15,40 @@ constexpr std::wstring_view kWidestSamples[] = {L"88", L"FL"};
 constexpr int kFallbackIconSize = 16;
 constexpr int kMinimumEmSize = 6;
 
+// Fitting the widest content edge to edge makes the digits look oversized next
+// to the shell's own tray glyphs, which all keep a margin inside their box.
+// Leaving a tenth of the box unused lands between that and the noticeably small
+// result of rendering large text and letting the shell scale the bitmap down.
+// Do not trade this margin for a heavier weight either: a smaller em with more
+// stroke fills in the counters of 8 and 0 at tray sizes and reads worse than
+// both. The three constants here were settled by comparing builds side by side
+// in the tray, and they interact -- changing one means re-checking the others.
+constexpr int kFillPercent = 90;
+
+// Rasterize this many times larger and average back down. Hinting can snap
+// stems to the pixel grid but never a diagonal, so 7 came out as a stack of
+// hard steps when drawn straight at icon size; averaging a larger raster gives
+// that stroke a real gradient. Past 2 the extra coverage levels stop being
+// visible at this size, and each step costs a larger intermediate bitmap.
+constexpr int kSupersample = 2;
+
+// Rasterized coverage is linear, and using it as alpha directly leaves the
+// glyphs looking thinner than the text the shell draws: ClearType biases
+// partial coverage upward to compensate for how light strokes on a dark
+// background read. Supersampling makes that worse -- the box filter spreads a
+// stem that hinting used to land on one solid pixel across two partial ones,
+// so the peak the eye reads as "solid" drops -- which is why this sits well
+// above the 1.8 or so ClearType itself uses. Calibrated against white text on a
+// dark taskbar; the light theme's black text needs the opposite bias, so the
+// same curve thickens it slightly, which measured out as acceptable.
+constexpr int kCoverageGammaPercent = 220;
+
 } // namespace
 
-IconRenderer::IconRenderer(COLORREF text_color, int fill_percent, int supersample, int gamma_percent)
-    : text_color_(text_color), fill_percent_(fill_percent), supersample_(std::max(supersample, 1)),
-      dc_(CreateCompatibleDC(nullptr)) {
-    // Coverage comes out of the rasterizer linear, and using it as alpha
-    // directly is what makes light text on a dark taskbar look thinner than the
-    // same glyphs the shell draws: ClearType applies a gamma correction that
-    // biases partial coverage upward. Bake the same curve into a table so the
-    // per-pixel loop stays a lookup.
-    const double exponent = 100.0 / std::max(gamma_percent, 1);
+IconRenderer::IconRenderer(COLORREF text_color)
+    : text_color_(text_color), dc_(CreateCompatibleDC(nullptr)) {
+    // Baked into a table so the per-pixel loop stays a lookup.
+    constexpr double exponent = 100.0 / kCoverageGammaPercent;
     for (int i = 0; i < 256; ++i) {
         const double corrected = std::pow(i / 255.0, exponent) * 255.0 + 0.5;
         coverage_curve_[i] = static_cast<BYTE>(std::min(corrected, 255.0));
@@ -46,8 +69,8 @@ void IconRenderer::ensure_font(UINT dpi) {
     }
     // Everything below fits and draws at the supersampled size; render() box
     // filters that back down to the icon size.
-    width_ = icon_width_ * supersample_;
-    height_ = icon_height_ * supersample_;
+    width_ = icon_width_ * kSupersample;
+    height_ = icon_height_ * kSupersample;
 
     // Segoe UI by name rather than the shell's lfMessageFont: on Chinese Windows
     // that resolves to Microsoft YaHei UI, which ships embedded bitmap strikes
@@ -70,8 +93,8 @@ void IconRenderer::ensure_font(UINT dpi) {
         return;
     }
 
-    const int width_budget = std::max(width_ * fill_percent_ / 100, 1);
-    const int height_budget = std::max(height_ * fill_percent_ / 100, 1);
+    const int width_budget = std::max(width_ * kFillPercent / 100, 1);
+    const int height_budget = std::max(height_ * kFillPercent / 100, 1);
 
     for (int em = height_; em >= kMinimumEmSize; --em) {
         base.lfHeight = -em;
@@ -155,7 +178,7 @@ unique_icon IconRenderer::render(std::wstring_view text, UINT dpi) {
     const int red = GetRValue(text_color_);
     const int green = GetGValue(text_color_);
     const int blue = GetBValue(text_color_);
-    const int taps = supersample_ * supersample_;
+    const int taps = kSupersample * kSupersample;
     const BYTE* const source = static_cast<const BYTE*>(pixels);
     BYTE* pixel = static_cast<BYTE*>(icon_pixels);
     for (int y = 0; y < icon_height_; ++y) {
@@ -165,10 +188,10 @@ unique_icon IconRenderer::render(std::wstring_view text, UINT dpi) {
             // hard steps when rasterized straight at icon size; averaging a
             // larger raster gives that stroke a real gradient instead.
             int sum = 0;
-            for (int sy = 0; sy < supersample_; ++sy) {
+            for (int sy = 0; sy < kSupersample; ++sy) {
                 const BYTE* row =
-                    source + (static_cast<size_t>(y * supersample_ + sy) * width_ + x * supersample_) * 4;
-                for (int sx = 0; sx < supersample_; ++sx) {
+                    source + (static_cast<size_t>(y * kSupersample + sy) * width_ + x * kSupersample) * 4;
+                for (int sx = 0; sx < kSupersample; ++sx) {
                     sum += row[sx * 4]; // grayscale AA: all three channels agree
                 }
             }
