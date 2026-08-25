@@ -32,19 +32,18 @@ void IconRenderer::ensure_font(UINT dpi) {
         width_ = height_ = kFallbackIconSize;
     }
 
+    // Segoe UI by name rather than the shell's lfMessageFont: on Chinese Windows
+    // that resolves to Microsoft YaHei UI, which ships embedded bitmap strikes
+    // covering exactly the small ppem sizes a tray icon lands on. GDI prefers a
+    // matching strike over the outlines and offers no way to opt out, so the
+    // glyphs come back hard-edged whatever lfQuality says -- which is why the
+    // aliasing appeared only below a certain em size, where the strikes end.
+    // Segoe UI carries no strikes, covers the digits and "FL", and is the face
+    // the shell renders its own tray text with.
     LOGFONTW base{};
-    NONCLIENTMETRICSW metrics{};
-    metrics.cbSize = sizeof(metrics);
-    if (SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0, dpi)) {
-        base = metrics.lfMessageFont;
-    } else {
-        base.lfWeight = FW_NORMAL;
-        base.lfCharSet = DEFAULT_CHARSET;
-        wcscpy_s(base.lfFaceName, L"Segoe UI");
-    }
-    base.lfWidth = 0;
-    base.lfEscapement = 0;
-    base.lfOrientation = 0;
+    base.lfWeight = FW_NORMAL;
+    base.lfCharSet = DEFAULT_CHARSET;
+    wcscpy_s(base.lfFaceName, L"Segoe UI");
     // Grayscale AA rather than ClearType: the icon is composited over an
     // arbitrary taskbar through its alpha channel, and subpixel coverage would
     // show up as colored fringes on the glyph edges.

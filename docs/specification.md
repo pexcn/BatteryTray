@@ -56,7 +56,7 @@
 
 把电量数字**渲染成文字位图**再转成 `HICON` 设为托盘图标（不是用现成图标资源）。
 
-- 字体：默认用系统 UI 字体（`SystemParametersInfo(SPI_GETNONCLIENTMETRICS)` 取 `lfMessageFont`，回退到 `Segoe UI`）。内容只有数字与 `FL`，不用 CJK 字体（如 Microsoft YaHei）——对纯 ASCII 无收益且非核心系统字体。
+- 字体：**按名字固定用 `Segoe UI`**，不读 `lfMessageFont`。内容只有数字与 `FL`，CJK 字体（如 Microsoft YaHei）对纯 ASCII 无收益，而中文 Windows 的 `lfMessageFont` 恰恰就是 Microsoft YaHei UI —— 它带内嵌点阵字形（embedded bitmap strikes），覆盖范围正是托盘图标这种小 ppem。GDI 只要命中点阵就绕过矢量轮廓，`ANTIALIASED_QUALITY` 在这条路径上失效且没有关闭开关，字形直接变成硬边锯齿（表现为：字号大到超出点阵覆盖才平滑，小一档就有锯齿）。Segoe UI 不带点阵，任何 ppem 都走矢量 + 灰度抗锯齿，也正是 shell 自己渲染托盘文字用的字面。
 - **字重跟随系统 UI 字体的常规字重，不加粗**：托盘这个字号下加粗会把 `8`、`0` 的字怀填糊，比笔画细更难看；要让笔画显得实，靠的是把字号留够（见下条），不是换字重。
 - **字号不写死**：托盘图标实际边长是 `GetSystemMetrics(SM_CXSMICON)`，随 DPI 缩放（100%→16px、150%→24px、200%→32px）。按当前 DPI 求出图标尺寸后，把字号**适配到该尺寸**（让最宽内容如两位数/`FL` 放得下、不被裁切），与「DPI 感知」要求一致。
 - **留边距，不顶满**：拟合时只用图标边长的 **90%** 作为宽高预算 —— 顶满整个方框的数字比系统自己的托盘图标显眼一大截，而按大字号画好位图再交给 shell 缩小（`percentage` 那种做法）又偏小；90% 是两者之间。这个比例是唯一的调节点，改它即可整体缩放字号；调低时注意笔画会跟着变细，别指望用加粗补回来。
