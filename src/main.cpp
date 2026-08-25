@@ -42,9 +42,10 @@ std::wstring display_text(int percent) {
     return percent > 99 ? std::wstring(L"FL") : std::to_wstring(percent);
 }
 
-// The tray tooltip is where "how long does one percent last" gets answered:
-// full charge / 100 is the energy in one percent, and the driver's rate is how
-// fast that energy is moving right now.
+// The tray tooltip answers "what is it drawing, and how long does that leave":
+// the driver's rate, and the energy still in the pack divided by it. How long
+// one percent lasts is the info panel's job -- a figure extrapolated from a
+// single instant is worth reading only next to the measured steps beside it.
 std::wstring build_tooltip(const BatteryState& state) {
     std::wstring tip = state.charging ? L"正在充电：" : L"使用电池：";
     tip += display_text(state.percent);
@@ -77,9 +78,6 @@ std::wstring build_tooltip(const BatteryState& state) {
     // a pair -- tried in the tray, reverted.
     wchar_t line[64];
     swprintf_s(line, L"\r\n%s：%.1f W", charging ? L"充电功率" : L"实时功耗", rate / 1000.0);
-    tip += line;
-    const double one_percent_seconds = full_mwh / 100.0 / rate * 3600.0;
-    swprintf_s(line, L"\r\n每 1%%：%s", format_duration(one_percent_seconds).c_str());
     tip += line;
 
     const unsigned long energy =

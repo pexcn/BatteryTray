@@ -211,7 +211,7 @@ void InfoPanel::build_rows() {
 
         if (full_mwh != 0) {
             rows_.push_back(
-                {RowStyle::Entry, L"每 1% 约", format_duration(full_mwh / 100.0 / magnitude * 3600.0)});
+                {RowStyle::Entry, L"每变化 1%", format_duration(full_mwh / 100.0 / magnitude * 3600.0)});
             const unsigned long energy =
                 charging ? (full_mwh > sample_.remaining_mwh ? full_mwh - sample_.remaining_mwh : 0)
                          : sample_.remaining_mwh;
