@@ -236,7 +236,7 @@ void InfoPanel::build_rows() {
         rows_.push_back({RowStyle::Detail, buffer, format_duration(step.seconds)});
     }
     if (steps == 0) {
-        rows_.push_back({RowStyle::Detail, L"还没有数据", {}});
+        rows_.push_back({RowStyle::Detail, L"暂无数据", {}});
     }
 
     mark = rows_.size();
