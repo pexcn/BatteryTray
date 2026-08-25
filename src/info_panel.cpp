@@ -229,7 +229,7 @@ void InfoPanel::build_rows() {
     // this session, not about the machine, and it fills in as it runs.
     rows_.push_back({RowStyle::Separator, {}, {}});
     rows_.push_back({RowStyle::Heading, L"最近实测", {}});
-    const size_t steps = std::min<size_t>(history_.size(), 3);
+    const size_t steps = std::min<size_t>(history_.size(), 6);
     for (size_t i = 0; i < steps; ++i) {
         const BatteryStep& step = history_[i];
         swprintf_s(buffer, L"%d → %d%%", step.from_percent, step.to_percent);
