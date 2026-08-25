@@ -29,7 +29,7 @@
      - 再往下压只剩绕开 CRT 这条路（`/NODEFAULTLIB` + 自定义入口点），代价是全局对象的构造/析构与
        静态初始化都要自己接管。**本项目不这么做**：省下的那点体积买不回这份长期维护成本。
    - 不链接系统库以外的任何东西；不引入 vcpkg/conan 等包管理器。
-3. **零第三方依赖**：只允许使用 Windows 自带的系统库（user32、gdi32、shell32、advapi32、cfgmgr32、gdiplus 等）与 C++ 标准库。**禁止**引入任何外部开源库、框架或 NuGet/vcpkg 包。
+3. **零第三方依赖**：只允许使用 Windows 自带的系统库（user32、gdi32、shell32、advapi32、cfgmgr32、dwmapi、gdiplus 等）与 C++ 标准库。**禁止**引入任何外部开源库、框架或 NuGet/vcpkg 包。
    - 文字绘制优先用纯 GDI（`CreateFont` + `TextOut` + `GetTextExtentPoint32`）以避免依赖 GDI+；若为字形质量选用 GDI+，需说明理由并确保 `gdiplus.dll` 是系统自带、无需分发。
 4. **单文件可执行**：产物是一个独立的 `BatteryTray.exe`，双击即用，无需安装、无需额外 DLL 分发。
 5. **绿色便携**：程序自身不产生配置文件，不向用户目录/系统目录写入任何东西。唯一会写的文件是「电量日志」，且**只写在 exe 所在目录**（见 [2.8](#28-电量日志)）。唯一的持久化状态是「开机启动」项写在注册表 `Run` 键（读写注册表不破坏便携性，是 Windows 开机启动的标准做法）；日志开关等其它状态不持久化。信息面板的「最近实测」历史**只在内存**，随进程退出而丢弃（见 [2.10.3](#2103-最近实测)）。
@@ -259,8 +259,21 @@
 
 - **触发**：托盘图标左键**双击**（`WM_LBUTTONDBLCLK` / 键盘的 `NIN_KEYSELECT`）。单击不触发 ——
   单击到托盘图标是最容易误触的操作。再次双击关闭。
-- **形态**：`WS_POPUP | WS_EX_TOOLWINDOW | WS_EX_TOPMOST`，无标题栏，圆角靠 `SetWindowRgn` 裁形状 +
-  自绘边框。不进任务栏、不进 Alt+Tab。
+- **形态**：`WS_POPUP | WS_EX_TOOLWINDOW | WS_EX_TOPMOST`，无标题栏，不进任务栏、不进 Alt+Tab。
+  外观按 shell 自己的飞出面板（音量 / 网络 / 电量）来，而不是自绘一个「浮层」：
+  - **圆角与边框交给 DWM**：`DwmSetWindowAttribute` 的 `DWMWA_WINDOW_CORNER_PREFERENCE`（33）
+    设 `DWMWCP_ROUND`，再用 `DWMWA_BORDER_COLOR`（34）与 `DWMWA_USE_IMMERSIVE_DARK_MODE`（20）
+    定边框。这样圆角是合成器画的、带抗锯齿，跟系统菜单同一个半径。
+    - **Windows 10 没有这几个属性**，`DwmSetWindowAttribute` 会失败 —— 用返回值挑降级路径：
+      `SetWindowRgn` 裁一个圆角区域 + 自绘 1px 边框。`SetWindowRgn` 是一位裁剪，圆角边缘有台阶，
+      所以只在 DWM 那条路走不通时才用，两者不能叠加。
+  - **阴影**：窗口类加 `CS_DROPSHADOW`，与菜单、飞出面板一致。
+  - **淡入**：`AnimateWindow(AW_BLEND)`，但先查 `SPI_GETCLIENTAREAANIMATION` —— 用户关了动画就直接
+    `ShowWindow`。同时要处理 `WM_PRINTCLIENT`：`AnimateWindow` 可能来取窗口图像而不是让它自己重画，
+    而本程序的 `WM_ERASEBKGND` 直接返回，不接这条消息会淡入出一个空矩形。
+  - **尺寸与配色也按 shell 的来**：16 的内边距、比文字高出一截的行高、背景 `#2C2C2C` / `#F9F9F9`，
+    次要文字与分隔线取 Windows 11 调色板上对应的那两档。行内左标签用主文字色、右数值用次要色
+    （与系统设置里的行一致：标签是用来扫的，数字是用来落眼的）。
 - **定位**：以托盘图标为锚点，跟 Windows 自己的音量 / 网络 / 电量面板同一种行为 —— 紧贴任务栏，
   从图标那一侧升起。两个轴分开定规则，四种任务栏位置就统一了：
   - **垂直于任务栏的轴**：面板紧贴工作区在那一侧的边界，留几像素间隙。
@@ -280,6 +293,8 @@
 - **DPI**：处理 `WM_DPICHANGED`，重算字体与布局（忽略系统建议的矩形，位置本来就要按锚点重算）。
   托盘图标那套 92% / 超采样常量与这里无关。
 - **字体用 `lfMessageFont`**（`SystemParametersInfoForDpi` + `SPI_GETNONCLIENTMETRICS`），不沿用 Segoe UI。
+  字号在它之上放大一档（`lfMessageFont` 是对话框的 9pt，shell 的飞出面板比它大一号），
+  顶部的百分比取两倍。
   [2.3](#23-托盘图标内容) 固定 Segoe UI 的理由只针对托盘那种小 ppem 下的内嵌点阵问题，面板是正常字号、
   还有中文文案，系统 UI 字体（中文 Windows 上是微软雅黑）才是对的选择。
 - **配色**：背景 / 文字 / 次要文字 / 分隔线 / 边框各两套（深浅），沿用 [2.4](#24-主题自适应配色) 的

@@ -76,6 +76,10 @@ private:
     UINT icon_id_ = 0;
     bool visible_ = false;
     unsigned long long hidden_ms_ = 0;
+    const bool light_theme_;
+    // Windows 11 rounds and outlines the window itself; Windows 10 gets a cut
+    // region and a drawn border instead.
+    bool dwm_rounded_ = false;
 
     UINT dpi_ = 96;
     UINT font_dpi_ = 0;

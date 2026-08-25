@@ -3,6 +3,7 @@
 #include "battery_history.h"
 #include "util.h"
 
+#include <dwmapi.h>
 #include <shellapi.h>
 
 #include <algorithm>
@@ -20,25 +21,48 @@ constexpr UINT kTimerId = 1;
 // four times, and the read is not free.
 constexpr UINT kTimerIntervalMs = 2000;
 
-// Device independent pixels; everything on screen goes through scale().
-constexpr int kWidthDip = 268; // fixed, sized for the longest label plus its value
-constexpr int kPaddingDip = 14;
-constexpr int kRowGapDip = 8;
-constexpr int kSeparatorDip = 13;
-constexpr int kIndentDip = 12;
+// Device independent pixels; everything on screen goes through scale(). The
+// numbers are the shell's own flyout metrics: 16 of padding, rows a good deal
+// taller than the text in them, and a panel wide enough that the longest value
+// still sits well clear of its label.
+constexpr int kWidthDip = 320; // fixed, sized for the longest label plus its value
+constexpr int kPaddingDip = 16;
+constexpr int kRowGapDip = 10;
+constexpr int kSeparatorDip = 17;
+constexpr int kIndentDip = 14;
 constexpr int kCornerDip = 8;
-constexpr int kEdgeGapDip = 8; // breathing room against the taskbar
+constexpr int kEdgeGapDip = 12; // breathing room against the taskbar
+
+// lfMessageFont is 9pt, which is the size Win32 dialogs use; the shell's own
+// flyouts set body text a size larger and the headline value at twice that.
+constexpr int kBodyScaleNumerator = 7;
+constexpr int kBodyScaleDenominator = 6;
+
+// DWM attributes that only exist on Windows 11, spelled out rather than taken
+// from dwmapi.h so an older SDK still compiles. An unsupported attribute fails
+// the call, which is precisely how the Windows 10 fallback below is chosen.
+constexpr DWORD kDwmUseImmersiveDarkMode = 20;
+constexpr DWORD kDwmWindowCornerPreference = 33;
+constexpr DWORD kDwmBorderColor = 34;
+constexpr DWORD kDwmCornerRound = 2; // DWMWCP_ROUND
+
+// Fade in the way the shell's flyouts do, but only when the user has left
+// animations on - SPI_GETCLIENTAREAANIMATION is the setting that turns them off.
+constexpr DWORD kFadeMs = 130;
 
 } // namespace
 
 InfoPanel::InfoPanel(HINSTANCE instance, const BatteryHistory& history, bool light_theme)
-    : instance_(instance), history_(history) {
-    // Two flat palettes rather than anything theme aware at runtime, matching
-    // the tray icon's read-once colour (see util::system_uses_light_theme).
-    colors_ = light_theme ? Palette{RGB(249, 249, 249), RGB(0, 0, 0), RGB(96, 96, 96), RGB(224, 224, 224),
-                                    RGB(190, 190, 190)}
-                          : Palette{RGB(32, 32, 32), RGB(255, 255, 255), RGB(160, 160, 160),
-                                    RGB(62, 62, 62), RGB(80, 80, 80)};
+    : instance_(instance), history_(history), light_theme_(light_theme) {
+    // The shell's own menu and flyout surfaces, read off the Windows 11 palette:
+    // #2C2C2C / #F9F9F9 for the background, secondary text at roughly 60% of the
+    // way to it, and a divider barely a shade off the surface. Two flat sets
+    // rather than anything theme aware at runtime, matching the tray icon's
+    // read-once colour (see util::system_uses_light_theme).
+    colors_ = light_theme ? Palette{RGB(249, 249, 249), RGB(26, 26, 26), RGB(94, 94, 94), RGB(229, 229, 229),
+                                    RGB(217, 217, 217)}
+                          : Palette{RGB(44, 44, 44), RGB(255, 255, 255), RGB(205, 205, 205),
+                                    RGB(62, 62, 62), RGB(66, 66, 66)};
 }
 
 InfoPanel::~InfoPanel() {
@@ -68,6 +92,10 @@ bool InfoPanel::ensure_window() {
 
     WNDCLASSEXW window_class{};
     window_class.cbSize = sizeof(window_class);
+    // CS_DROPSHADOW is what lifts a popup off the wallpaper the way every menu
+    // and flyout in the shell is lifted; without it the panel reads as a
+    // rectangle pasted onto the screen.
+    window_class.style = CS_DROPSHADOW;
     window_class.lpfnWndProc = &InfoPanel::window_proc;
     window_class.hInstance = instance_;
     window_class.lpszClassName = kPanelClassName;
@@ -81,7 +109,25 @@ bool InfoPanel::ensure_window() {
     // the shell's own volume and battery flyouts have.
     window_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, kPanelClassName, L"电量托盘", WS_POPUP, 0, 0,
                               0, 0, nullptr, nullptr, instance_, this);
-    return window_ != nullptr;
+    if (!window_) {
+        return false;
+    }
+
+    // Let DWM round and outline the window instead of doing either by hand. It
+    // is the same rounding the shell gives its own flyouts, it is antialiased
+    // against whatever is behind the panel, and the hairline border comes with
+    // it. Windows 10 has none of these attributes and fails the call, which is
+    // what picks the hand cut region and the drawn border further down.
+    const DWORD corner = kDwmCornerRound;
+    dwm_rounded_ =
+        SUCCEEDED(DwmSetWindowAttribute(window_, kDwmWindowCornerPreference, &corner, sizeof(corner)));
+    if (dwm_rounded_) {
+        const BOOL dark = light_theme_ ? FALSE : TRUE;
+        DwmSetWindowAttribute(window_, kDwmUseImmersiveDarkMode, &dark, sizeof(dark));
+        const COLORREF border = colors_.border;
+        DwmSetWindowAttribute(window_, kDwmBorderColor, &border, sizeof(border));
+    }
+    return true;
 }
 
 void InfoPanel::ensure_fonts() {
@@ -99,9 +145,11 @@ void InfoPanel::ensure_fonts() {
         return;
     }
 
-    LOGFONTW title = metrics.lfMessageFont;
-    title.lfHeight = MulDiv(title.lfHeight, 9, 5); // the percentage leads the panel
-    font_.reset(CreateFontIndirectW(&metrics.lfMessageFont));
+    LOGFONTW body = metrics.lfMessageFont;
+    body.lfHeight = MulDiv(body.lfHeight, kBodyScaleNumerator, kBodyScaleDenominator);
+    LOGFONTW title = body;
+    title.lfHeight *= 2; // the percentage leads the panel
+    font_.reset(CreateFontIndirectW(&body));
     title_font_.reset(CreateFontIndirectW(&title));
     font_dpi_ = dpi_;
 
@@ -135,7 +183,11 @@ void InfoPanel::show() {
     // and a hide arriving in the middle has to find the panel consistent.
     visible_ = true;
     SetTimer(window_, kTimerId, kTimerIntervalMs, nullptr);
-    ShowWindow(window_, SW_SHOW);
+    BOOL animate = TRUE;
+    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animate, 0);
+    if (!animate || !AnimateWindow(window_, kFadeMs, AW_BLEND)) {
+        ShowWindow(window_, SW_SHOW);
+    }
     // Focus is what makes WM_ACTIVATE arrive, and losing it is how the panel
     // closes; a tray click leaves us allowed to take the foreground.
     SetForegroundWindow(window_);
@@ -333,10 +385,13 @@ void InfoPanel::relayout() {
     build_rows();
     const SIZE size = measure();
 
-    // Rounded corners are cut out of the window shape, which is the only way a
-    // plain GDI popup gets them; the region is owned by the system afterwards.
-    const int corner = scale(kCornerDip) * 2;
-    SetWindowRgn(window_, CreateRoundRectRgn(0, 0, size.cx + 1, size.cy + 1, corner, corner), FALSE);
+    // Only where DWM would not round the window itself: a region is a hard
+    // one-bit clip, so its corners are visibly stepped next to the composited
+    // ones. On Windows 11 the corners are DWM's and the region stays unset.
+    if (!dwm_rounded_) {
+        const int corner = scale(kCornerDip) * 2;
+        SetWindowRgn(window_, CreateRoundRectRgn(0, 0, size.cx + 1, size.cy + 1, corner, corner), FALSE);
+    }
 
     const POINT origin = anchor_origin(size);
     SetWindowPos(window_, HWND_TOPMOST, origin.x, origin.y, size.cx, size.cy, SWP_NOACTIVATE);
@@ -351,8 +406,14 @@ void InfoPanel::paint(HDC dc, const RECT& client) const {
     }
     HGDIOBJ previous_brush = SelectObject(dc, background.get());
     HGDIOBJ previous_pen = SelectObject(dc, border.get());
-    const int corner = scale(kCornerDip) * 2;
-    RoundRect(dc, client.left, client.top, client.right, client.bottom, corner, corner);
+    if (dwm_rounded_) {
+        // The corners and the hairline are DWM's; drawing a border here would
+        // put a second outline just inside the system's own.
+        FillRect(dc, &client, background.get());
+    } else {
+        const int corner = scale(kCornerDip) * 2;
+        RoundRect(dc, client.left, client.top, client.right, client.bottom, corner, corner);
+    }
 
     SetBkMode(dc, TRANSPARENT);
     const int left = scale(kPaddingDip);
@@ -381,10 +442,13 @@ void InfoPanel::paint(HDC dc, const RECT& client) const {
             }
         } else {
             line = {left + (row.style == RowStyle::Detail ? scale(kIndentDip) : 0), y, right, y + height};
-            SetTextColor(dc, colors_.secondary);
+            // Label in the primary colour, value in the secondary one, the way
+            // the shell's own settings rows read: the label is what you scan
+            // for, the number is what you land on.
+            SetTextColor(dc, row.style == RowStyle::Entry ? colors_.text : colors_.secondary);
             DrawTextW(dc, row.label.c_str(), -1, &line, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
             if (!row.value.empty()) {
-                SetTextColor(dc, row.style == RowStyle::Entry ? colors_.text : colors_.secondary);
+                SetTextColor(dc, colors_.secondary);
                 DrawTextW(dc, row.value.c_str(), -1, &line, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
             }
         }
@@ -441,6 +505,15 @@ LRESULT InfoPanel::handle_message(UINT message, WPARAM wparam, LPARAM lparam) {
             paint(dc, client);
         }
         EndPaint(window_, &paint_struct);
+        return 0;
+    }
+
+    case WM_PRINTCLIENT: {
+        // AnimateWindow may ask for the panel's image rather than let it paint
+        // itself, and WM_ERASEBKGND alone would hand it an empty rectangle.
+        RECT client{};
+        GetClientRect(window_, &client);
+        paint(reinterpret_cast<HDC>(wparam), client);
         return 0;
     }
 
