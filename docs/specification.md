@@ -294,7 +294,7 @@
   再次单击关闭。跟系统自己的电量图标一致 —— 那个也是单击就弹。
 - **形态**：`WS_POPUP | WS_EX_TOOLWINDOW | WS_EX_TOPMOST`，无标题栏，圆角靠 `SetWindowRgn` 裁形状 +
   自绘边框。不进任务栏、不进 Alt+Tab。
-  - **圆角半径取小的一档（2 dip）**。`SetWindowRgn` 是一位裁剪，弧上没有抗锯齿，半径越大台阶越多、
+  - **圆角半径取小的一档（3 dip）**。`SetWindowRgn` 是一位裁剪，弧上没有抗锯齿，半径越大台阶越多、
     越显得是「自己画的圆」；小到两三个像素时更接近「磨掉直角」而不是圆角，台阶无从看起。
     要更大的圆角就得换掉裁剪这条路（Windows 11 的 `DWMWA_WINDOW_CORNER_PREFERENCE` 由合成器画、
     带抗锯齿，但 Windows 10 上没有这个属性）。

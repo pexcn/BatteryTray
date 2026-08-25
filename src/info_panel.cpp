@@ -27,9 +27,9 @@ constexpr int kRowGapDip = 8;
 constexpr int kSeparatorDip = 13;
 // Small on purpose. A window region is a one-bit clip, so the arc comes out as
 // a staircase, and the wider the radius the more steps there are to notice. At
-// this radius the corner is barely more than a chamfer - it takes the hard
+// this radius the corner is little more than a chamfer - it takes the hard
 // point off the square without ever showing how it was cut.
-constexpr int kCornerDip = 2;
+constexpr int kCornerDip = 3;
 constexpr int kEdgeGapDip = 8; // breathing room against the taskbar
 
 } // namespace
