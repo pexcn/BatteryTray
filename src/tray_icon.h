@@ -13,6 +13,10 @@ namespace bt {
 // result of rendering large text and letting the shell scale the bitmap down.
 // Do not trade this margin for a heavier weight: a smaller em with more stroke
 // fills in the counters of 8 and 0 at tray sizes, which reads worse than either.
+// Do not raise it much either: past ~91 the fitted em crosses the ppem where
+// Segoe UI's gasp table switches to symmetric smoothing, which stops snapping
+// the stems to the pixel grid and looks blurry at this size. 90 sits just under
+// that step, so it is both the largest and the sharpest option here.
 inline constexpr int kDefaultFillPercent = 90;
 
 // Turns the battery text (L"87", L"FL") into a notification-area sized HICON.
