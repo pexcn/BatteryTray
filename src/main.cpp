@@ -46,7 +46,7 @@ std::wstring display_text(int percent) {
 // full charge / 100 is the energy in one percent, and the driver's rate is how
 // fast that energy is moving right now.
 std::wstring build_tooltip(const BatteryState& state) {
-    std::wstring tip = state.charging ? L"正在充电: " : L"使用电池: ";
+    std::wstring tip = state.charging ? L"正在充电：" : L"使用电池：";
     tip += display_text(state.percent);
     tip += L'%';
 
@@ -72,20 +72,21 @@ std::wstring build_tooltip(const BatteryState& state) {
 
     // One measurement per line, all of them split by the same colon: the shell
     // draws the tip in a proportional font, so a separator in a fixed place is
-    // the only alignment left. Half width, like every other mark the program
-    // puts on screen.
+    // the only alignment available here. Full width: a half width colon sits
+    // tight against the Chinese label before it, and the pair stops reading as
+    // a pair -- tried in the tray, reverted.
     wchar_t line[64];
-    swprintf_s(line, L"\r\n%s: %.1f W", charging ? L"充电功率" : L"实时功耗", rate / 1000.0);
+    swprintf_s(line, L"\r\n%s：%.1f W", charging ? L"充电功率" : L"实时功耗", rate / 1000.0);
     tip += line;
     const double one_percent_seconds = full_mwh / 100.0 / rate * 3600.0;
-    swprintf_s(line, L"\r\n每 1%%: %s", format_duration(one_percent_seconds).c_str());
+    swprintf_s(line, L"\r\n每 1%%：%s", format_duration(one_percent_seconds).c_str());
     tip += line;
 
     const unsigned long energy =
         charging ? (full_mwh > sample.remaining_mwh ? full_mwh - sample.remaining_mwh : 0)
                  : sample.remaining_mwh;
     if (energy != 0) {
-        swprintf_s(line, L"\r\n预计%s: %s", charging ? L"充满" : L"剩余",
+        swprintf_s(line, L"\r\n预计%s：%s", charging ? L"充满" : L"剩余",
                    format_duration(energy / static_cast<double>(rate) * 3600.0).c_str());
         tip += line;
     }
