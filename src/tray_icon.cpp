@@ -16,8 +16,10 @@ constexpr int kMinimumEmSize = 6;
 
 } // namespace
 
-IconRenderer::IconRenderer(COLORREF text_color, int fill_percent)
-    : text_color_(text_color), fill_percent_(fill_percent), dc_(CreateCompatibleDC(nullptr)) {}
+IconRenderer::IconRenderer(COLORREF text_color, int fill_percent, PCWSTR face)
+    : text_color_(text_color), fill_percent_(fill_percent), dc_(CreateCompatibleDC(nullptr)) {
+    wcscpy_s(face_, face);
+}
 
 void IconRenderer::ensure_font(UINT dpi) {
     if (font_ && dpi == font_dpi_) {
@@ -43,7 +45,7 @@ void IconRenderer::ensure_font(UINT dpi) {
     LOGFONTW base{};
     base.lfWeight = FW_NORMAL;
     base.lfCharSet = DEFAULT_CHARSET;
-    wcscpy_s(base.lfFaceName, L"Segoe UI");
+    wcscpy_s(base.lfFaceName, face_);
     // Grayscale AA rather than ClearType: the icon is composited over an
     // arbitrary taskbar through its alpha channel, and subpixel coverage would
     // show up as colored fringes on the glyph edges.

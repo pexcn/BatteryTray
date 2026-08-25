@@ -45,10 +45,35 @@ UINT g_taskbar_created = 0;
 // once the number is settled.
 int g_forced_percent = -1;
 int g_fill_percent = kDefaultFillPercent;
+wchar_t g_face_buffer[LF_FACESIZE] = {};
+PCWSTR g_face = kDefaultFace;
 
 int parse_tuning_option(PCWSTR command_line, PCWSTR option, int fallback) {
     const wchar_t* const found = wcsstr(command_line, option);
     return found ? _wtoi(found + wcslen(option)) : fallback;
+}
+
+// TEMPORARY: "--face=Tahoma", or --face="Segoe UI" for a name with a space.
+PCWSTR parse_tuning_face(PCWSTR command_line) {
+    constexpr wchar_t kOption[] = L"--face=";
+    const wchar_t* found = wcsstr(command_line, kOption);
+    if (!found) {
+        return kDefaultFace;
+    }
+
+    found += wcslen(kOption);
+    const wchar_t terminator = *found == L'"' ? L'"' : L' ';
+    if (terminator == L'"') {
+        ++found;
+    }
+
+    size_t length = 0;
+    while (length + 1 < LF_FACESIZE && found[length] != L'\0' && found[length] != terminator) {
+        g_face_buffer[length] = found[length];
+        ++length;
+    }
+    g_face_buffer[length] = L'\0';
+    return length > 0 ? g_face_buffer : kDefaultFace;
 }
 
 struct BatteryState {
@@ -102,7 +127,7 @@ COLORREF read_theme_text_color() {
 class App {
 public:
     explicit App(HINSTANCE instance)
-        : instance_(instance), renderer_(read_theme_text_color(), g_fill_percent) {}
+        : instance_(instance), renderer_(read_theme_text_color(), g_fill_percent, g_face) {}
 
     bool create_window();
     int run();
@@ -265,9 +290,9 @@ void App::refresh(bool force) {
         data.uFlags |= NIF_ICON;
         data.hIcon = icon.get();
     }
-    // TEMPORARY: the fill value rides along so side by side copies stay apart.
-    swprintf_s(data.szTip, L"%s：%s%%（fill=%d%%）", state.charging ? L"正在充电" : L"使用电池", text.c_str(),
-               g_fill_percent);
+    // TEMPORARY: the knob values ride along so side by side copies stay apart.
+    swprintf_s(data.szTip, L"%s：%s%%（fill=%d%% %s）", state.charging ? L"正在充电" : L"使用电池", text.c_str(),
+               g_fill_percent, g_face);
     Shell_NotifyIconW(NIM_MODIFY, &data);
 
     // Only now is the previous icon safe to destroy: the shell has been handed
@@ -337,6 +362,7 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE, _In_ PWSTR comm
     if (tuning) {
         g_fill_percent = parse_tuning_option(command_line, L"--fill=", kDefaultFillPercent);
         g_forced_percent = parse_tuning_option(command_line, L"--percent=", -1);
+        g_face = parse_tuning_face(command_line);
     }
 
     // Optional single instance guard: a second copy would just stack another
