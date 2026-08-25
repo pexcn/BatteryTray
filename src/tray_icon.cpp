@@ -17,13 +17,18 @@ constexpr int kMinimumEmSize = 6;
 
 // Fitting the widest content edge to edge makes the digits look oversized next
 // to the shell's own tray glyphs, which all keep a margin inside their box.
-// Leaving a tenth of the box unused lands between that and the noticeably small
-// result of rendering large text and letting the shell scale the bitmap down.
-// Do not trade this margin for a heavier weight either: a smaller em with more
-// stroke fills in the counters of 8 and 0 at tray sizes and reads worse than
-// both. The three constants here were settled by comparing builds side by side
-// in the tray, and they interact -- changing one means re-checking the others.
-constexpr int kFillPercent = 90;
+// Leaving a margin lands between that and the noticeably small result of
+// rendering large text and letting the shell scale the bitmap down. Do not trade
+// it for a heavier weight either: a smaller em with more stroke fills in the
+// counters of 8 and 0 at tray sizes and reads worse than both. The constants
+// here were settled by comparing builds side by side in the tray, and they
+// interact -- changing one means re-checking the others.
+//
+// Only the fitted em is visible in the end, and it moves in steps of
+// kSupersample, so a range of percentages maps to the same result; this one sits
+// where the budget still admits the larger candidate rather than just missing
+// it.
+constexpr int kFillPercent = 92;
 
 // Rasterize this many times larger and average back down. Hinting can snap
 // stems to the pixel grid but never a diagonal, so 7 came out as a stack of
@@ -96,7 +101,14 @@ void IconRenderer::ensure_font(UINT dpi) {
     const int width_budget = std::max(width_ * kFillPercent / 100, 1);
     const int height_budget = std::max(height_ * kFillPercent / 100, 1);
 
-    for (int em = height_; em >= kMinimumEmSize; --em) {
+    // Step by the supersample factor so the em stays a multiple of it, which
+    // height_ already is. An em that is not lines the glyph features up against
+    // the middle of a box filter cell instead of its edge, and a stem that would
+    // have landed on one solid pixel gets averaged across two -- the same peak
+    // loss the gamma curve exists to fight, reintroduced by misalignment. Doing
+    // it here rather than by picking a kFillPercent that happens to land on a
+    // multiple keeps it true at every DPI.
+    for (int em = height_; em >= kMinimumEmSize; em -= kSupersample) {
         base.lfHeight = -em;
         unique_font candidate(CreateFontIndirectW(&base));
         if (!candidate) {
