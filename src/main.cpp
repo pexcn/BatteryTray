@@ -66,20 +66,25 @@ std::wstring build_tooltip(const BatteryState& state) {
         return tip;
     }
 
-    wchar_t line[64];
-    const double one_percent_seconds = full_mwh / 100.0 / rate * 3600.0;
-    swprintf_s(line, L"\r\n%s %.1f W · 每 1%% 约 %s", sample.rate_mw > 0 ? L"充电" : L"功耗", rate / 1000.0,
-               format_duration(one_percent_seconds).c_str());
-    tip += line;
-
     // Direction comes from the rate, not from ACLineStatus: a full pack on AC
     // is plugged in without charging.
     const bool charging = sample.rate_mw > 0;
+
+    // One measurement per line, all of them split by the same colon: the shell
+    // draws the tip in a proportional font, so a separator in a fixed place is
+    // the only alignment available here.
+    wchar_t line[64];
+    swprintf_s(line, L"\r\n%s：%.1f W", charging ? L"充电功率" : L"实时功耗", rate / 1000.0);
+    tip += line;
+    const double one_percent_seconds = full_mwh / 100.0 / rate * 3600.0;
+    swprintf_s(line, L"\r\n每 1%%：%s", format_duration(one_percent_seconds).c_str());
+    tip += line;
+
     const unsigned long energy =
         charging ? (full_mwh > sample.remaining_mwh ? full_mwh - sample.remaining_mwh : 0)
                  : sample.remaining_mwh;
     if (energy != 0) {
-        swprintf_s(line, L"\r\n预计%s %s", charging ? L"充满" : L"剩余",
+        swprintf_s(line, L"\r\n预计%s：%s", charging ? L"充满" : L"剩余",
                    format_duration(energy / static_cast<double>(rate) * 3600.0).c_str());
         tip += line;
     }
