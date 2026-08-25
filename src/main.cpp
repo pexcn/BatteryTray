@@ -36,47 +36,21 @@ constexpr wchar_t kSingletonMutexName[] = L"Local\\BatteryTray.singleton";
 // its icon then.
 UINT g_taskbar_created = 0;
 
-// TEMPORARY (tray glyph tuning): "--fill=85 --percent=88" overrides the box
-// budget the font is fitted into and the battery reading, so the look can be
-// judged without a battery that cooperates. Passing any argument also lifts the
-// single instance guard, which is the point: several copies with different
-// --fill values sit in the tray next to each other for comparison, and the
-// tooltip carries the value so they stay tellable apart. Revert this commit
-// once the number is settled.
+// TEMPORARY (tray glyph tuning): --fill, --percent, --supersample and --gamma
+// override the box budget the font is fitted into, the battery reading, the
+// rasterization scale and the coverage curve, so the look can be judged without
+// a battery that cooperates. Passing any argument also lifts the single instance
+// guard, which is the point: several copies with different values sit in the
+// tray next to each other for comparison, and the tooltip carries the values so
+// they stay tellable apart. Revert this commit once the numbers are settled.
 int g_forced_percent = -1;
 int g_fill_percent = kDefaultFillPercent;
-wchar_t g_face_buffer[LF_FACESIZE] = {};
-PCWSTR g_face = kDefaultFace;
 int g_supersample = 1;
 int g_gamma_percent = 100;
-bool g_use_dwrite = false;
 
 int parse_tuning_option(PCWSTR command_line, PCWSTR option, int fallback) {
     const wchar_t* const found = wcsstr(command_line, option);
     return found ? _wtoi(found + wcslen(option)) : fallback;
-}
-
-// TEMPORARY: "--face=Tahoma", or --face="Segoe UI" for a name with a space.
-PCWSTR parse_tuning_face(PCWSTR command_line) {
-    constexpr wchar_t kOption[] = L"--face=";
-    const wchar_t* found = wcsstr(command_line, kOption);
-    if (!found) {
-        return kDefaultFace;
-    }
-
-    found += wcslen(kOption);
-    const wchar_t terminator = *found == L'"' ? L'"' : L' ';
-    if (terminator == L'"') {
-        ++found;
-    }
-
-    size_t length = 0;
-    while (length + 1 < LF_FACESIZE && found[length] != L'\0' && found[length] != terminator) {
-        g_face_buffer[length] = found[length];
-        ++length;
-    }
-    g_face_buffer[length] = L'\0';
-    return length > 0 ? g_face_buffer : kDefaultFace;
 }
 
 struct BatteryState {
@@ -131,8 +105,7 @@ class App {
 public:
     explicit App(HINSTANCE instance)
         : instance_(instance),
-          renderer_(read_theme_text_color(), g_fill_percent, g_face, g_supersample, g_gamma_percent,
-                    g_use_dwrite) {}
+          renderer_(read_theme_text_color(), g_fill_percent, g_supersample, g_gamma_percent) {}
 
     bool create_window();
     int run();
@@ -296,9 +269,8 @@ void App::refresh(bool force) {
         data.hIcon = icon.get();
     }
     // TEMPORARY: the knob values ride along so side by side copies stay apart.
-    swprintf_s(data.szTip, L"%s：%s%%（fill=%d%% %s x%d g%d %s）", state.charging ? L"正在充电" : L"使用电池",
-               text.c_str(), g_fill_percent, renderer_.resolved_face(), g_supersample, g_gamma_percent,
-               renderer_.dwrite_active() ? L"dwrite" : L"gdi");
+    swprintf_s(data.szTip, L"%s：%s%%（fill=%d%% x%d g%d）", state.charging ? L"正在充电" : L"使用电池",
+               text.c_str(), g_fill_percent, g_supersample, g_gamma_percent);
     Shell_NotifyIconW(NIM_MODIFY, &data);
 
     // Only now is the previous icon safe to destroy: the shell has been handed
@@ -368,10 +340,8 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE, _In_ PWSTR comm
     if (tuning) {
         g_fill_percent = parse_tuning_option(command_line, L"--fill=", kDefaultFillPercent);
         g_forced_percent = parse_tuning_option(command_line, L"--percent=", -1);
-        g_face = parse_tuning_face(command_line);
         g_supersample = parse_tuning_option(command_line, L"--supersample=", 1);
         g_gamma_percent = parse_tuning_option(command_line, L"--gamma=", 100);
-        g_use_dwrite = wcsstr(command_line, L"--dwrite") != nullptr;
     }
 
     // Optional single instance guard: a second copy would just stack another
