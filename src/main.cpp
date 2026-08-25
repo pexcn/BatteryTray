@@ -8,6 +8,8 @@
 #include <windowsx.h>
 
 #include <cstdio>
+#include <cstdlib>
+#include <cwchar>
 #include <string>
 
 #include "autostart.h"
@@ -34,12 +36,35 @@ constexpr wchar_t kSingletonMutexName[] = L"Local\\BatteryTray.singleton";
 // its icon then.
 UINT g_taskbar_created = 0;
 
+// TEMPORARY (tray glyph tuning): --fill, --percent, --supersample and --gamma
+// override the box budget the font is fitted into, the battery reading, the
+// rasterization scale and the coverage curve, so the look can be judged without
+// a battery that cooperates and without recompiling for every value. Passing any
+// argument also lifts the single instance guard, which is the point: several
+// copies with different values sit in the tray next to each other for
+// comparison, and the tooltip carries the values so they stay tellable apart.
+// Zero means "leave the compiled-in constant alone". Revert this commit once the
+// numbers are settled.
+int g_forced_percent = -1;
+int g_fill_percent = 0;
+int g_supersample = 0;
+int g_gamma_percent = 0;
+
+int parse_tuning_option(PCWSTR command_line, PCWSTR option, int fallback) {
+    const wchar_t* const found = wcsstr(command_line, option);
+    return found ? _wtoi(found + wcslen(option)) : fallback;
+}
+
 struct BatteryState {
     int percent;
     bool charging;
 };
 
 BatteryState query_battery() {
+    if (g_forced_percent >= 0) {
+        return {g_forced_percent, false}; // TEMPORARY: tuning override
+    }
+
     SYSTEM_POWER_STATUS status{};
     if (!GetSystemPowerStatus(&status)) {
         return {100, false};
@@ -80,7 +105,9 @@ COLORREF read_theme_text_color() {
 
 class App {
 public:
-    explicit App(HINSTANCE instance) : instance_(instance), renderer_(read_theme_text_color()) {}
+    explicit App(HINSTANCE instance)
+        : instance_(instance),
+          renderer_(read_theme_text_color(), g_fill_percent, g_supersample, g_gamma_percent) {}
 
     bool create_window();
     int run();
@@ -243,7 +270,9 @@ void App::refresh(bool force) {
         data.uFlags |= NIF_ICON;
         data.hIcon = icon.get();
     }
-    swprintf_s(data.szTip, L"%s：%s%%", state.charging ? L"正在充电" : L"使用电池", text.c_str());
+    // TEMPORARY: the knob values ride along so side by side copies stay apart.
+    swprintf_s(data.szTip, L"%s：%s%%（fill=%d%% x%d g%d）", state.charging ? L"正在充电" : L"使用电池",
+               text.c_str(), renderer_.fill_percent(), renderer_.supersample(), renderer_.gamma_percent());
     Shell_NotifyIconW(NIM_MODIFY, &data);
 
     // Only now is the previous icon safe to destroy: the shell has been handed
@@ -307,11 +336,20 @@ void App::show_menu(int x, int y) {
 
 } // namespace
 
-int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int) {
+int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE, _In_ PWSTR command_line, _In_ int) {
+    // TEMPORARY: see the tuning knobs above.
+    const bool tuning = command_line != nullptr && *command_line != L'\0';
+    if (tuning) {
+        g_fill_percent = parse_tuning_option(command_line, L"--fill=", 0);
+        g_forced_percent = parse_tuning_option(command_line, L"--percent=", -1);
+        g_supersample = parse_tuning_option(command_line, L"--supersample=", 0);
+        g_gamma_percent = parse_tuning_option(command_line, L"--gamma=", 0);
+    }
+
     // Optional single instance guard: a second copy would just stack another
     // identical icon in the tray.
     const unique_kernel_handle singleton(CreateMutexW(nullptr, TRUE, kSingletonMutexName));
-    if (!singleton || GetLastError() == ERROR_ALREADY_EXISTS) {
+    if (!tuning && (!singleton || GetLastError() == ERROR_ALREADY_EXISTS)) {
         return 0;
     }
 

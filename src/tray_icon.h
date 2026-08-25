@@ -12,15 +12,26 @@ namespace bt {
 // happens on every battery change and creating GDI objects there is pure waste.
 class IconRenderer {
 public:
-    explicit IconRenderer(COLORREF text_color);
+    // TEMPORARY: the three knobs the tuning build overrides; zero means the
+    // constant compiled in.
+    explicit IconRenderer(COLORREF text_color, int fill_percent = 0, int supersample = 0,
+                          int gamma_percent = 0);
 
     // Caller owns the icon; empty on failure.
     [[nodiscard]] unique_icon render(std::wstring_view text, UINT dpi);
+
+    // TEMPORARY: what the knobs resolved to, for the tuning tooltip.
+    [[nodiscard]] int fill_percent() const { return fill_percent_; }
+    [[nodiscard]] int supersample() const { return supersample_; }
+    [[nodiscard]] int gamma_percent() const { return gamma_percent_; }
 
 private:
     void ensure_font(UINT dpi);
 
     COLORREF text_color_;
+    int fill_percent_;
+    int supersample_;
+    int gamma_percent_;
     BYTE coverage_curve_[256]; // see kCoverageGammaPercent
     unique_dc dc_;
     unique_font font_;

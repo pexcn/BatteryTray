@@ -50,10 +50,15 @@ constexpr int kCoverageGammaPercent = 220;
 
 } // namespace
 
-IconRenderer::IconRenderer(COLORREF text_color)
-    : text_color_(text_color), dc_(CreateCompatibleDC(nullptr)) {
+// TEMPORARY: a zero for any knob means "use the constant above", so the tuning
+// build only has to pass what it is overriding.
+IconRenderer::IconRenderer(COLORREF text_color, int fill_percent, int supersample, int gamma_percent)
+    : text_color_(text_color), fill_percent_(fill_percent > 0 ? fill_percent : kFillPercent),
+      supersample_(supersample > 0 ? supersample : kSupersample),
+      gamma_percent_(gamma_percent > 0 ? gamma_percent : kCoverageGammaPercent),
+      dc_(CreateCompatibleDC(nullptr)) {
     // Baked into a table so the per-pixel loop stays a lookup.
-    constexpr double exponent = 100.0 / kCoverageGammaPercent;
+    const double exponent = 100.0 / gamma_percent_;
     for (int i = 0; i < 256; ++i) {
         const double corrected = std::pow(i / 255.0, exponent) * 255.0 + 0.5;
         coverage_curve_[i] = static_cast<BYTE>(std::min(corrected, 255.0));
@@ -74,8 +79,8 @@ void IconRenderer::ensure_font(UINT dpi) {
     }
     // Everything below fits and draws at the supersampled size; render() box
     // filters that back down to the icon size.
-    width_ = icon_width_ * kSupersample;
-    height_ = icon_height_ * kSupersample;
+    width_ = icon_width_ * supersample_;
+    height_ = icon_height_ * supersample_;
 
     // Segoe UI by name rather than the shell's lfMessageFont: on Chinese Windows
     // that resolves to Microsoft YaHei UI, which ships embedded bitmap strikes
@@ -98,17 +103,17 @@ void IconRenderer::ensure_font(UINT dpi) {
         return;
     }
 
-    const int width_budget = std::max(width_ * kFillPercent / 100, 1);
-    const int height_budget = std::max(height_ * kFillPercent / 100, 1);
+    const int width_budget = std::max(width_ * fill_percent_ / 100, 1);
+    const int height_budget = std::max(height_ * fill_percent_ / 100, 1);
 
     // Step by the supersample factor so the em stays a multiple of it, which
     // height_ already is. An em that is not lines the glyph features up against
     // the middle of a box filter cell instead of its edge, and a stem that would
     // have landed on one solid pixel gets averaged across two -- the same peak
     // loss the gamma curve exists to fight, reintroduced by misalignment. Doing
-    // it here rather than by picking a kFillPercent that happens to land on a
+    // it here rather than by picking a fill percentage that happens to land on a
     // multiple keeps it true at every DPI.
-    for (int em = height_; em >= kMinimumEmSize; em -= kSupersample) {
+    for (int em = height_; em >= kMinimumEmSize; em -= supersample_) {
         base.lfHeight = -em;
         unique_font candidate(CreateFontIndirectW(&base));
         if (!candidate) {
@@ -190,7 +195,7 @@ unique_icon IconRenderer::render(std::wstring_view text, UINT dpi) {
     const int red = GetRValue(text_color_);
     const int green = GetGValue(text_color_);
     const int blue = GetBValue(text_color_);
-    const int taps = kSupersample * kSupersample;
+    const int taps = supersample_ * supersample_;
     const BYTE* const source = static_cast<const BYTE*>(pixels);
     BYTE* pixel = static_cast<BYTE*>(icon_pixels);
     for (int y = 0; y < icon_height_; ++y) {
@@ -200,10 +205,10 @@ unique_icon IconRenderer::render(std::wstring_view text, UINT dpi) {
             // hard steps when rasterized straight at icon size; averaging a
             // larger raster gives that stroke a real gradient instead.
             int sum = 0;
-            for (int sy = 0; sy < kSupersample; ++sy) {
+            for (int sy = 0; sy < supersample_; ++sy) {
                 const BYTE* row =
-                    source + (static_cast<size_t>(y * kSupersample + sy) * width_ + x * kSupersample) * 4;
-                for (int sx = 0; sx < kSupersample; ++sx) {
+                    source + (static_cast<size_t>(y * supersample_ + sy) * width_ + x * supersample_) * 4;
+                for (int sx = 0; sx < supersample_; ++sx) {
                     sum += row[sx * 4]; // grayscale AA: all three channels agree
                 }
             }
