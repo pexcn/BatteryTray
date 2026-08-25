@@ -15,12 +15,15 @@ constexpr std::wstring_view kWidestSamples[] = {L"88", L"FL"};
 constexpr int kFallbackIconSize = 16;
 constexpr int kMinimumEmSize = 6;
 
+// "88", "FL" or a forced reading; nothing longer ever reaches the rasterizer.
+constexpr size_t kMaxGlyphs = 4;
+
 } // namespace
 
 IconRenderer::IconRenderer(COLORREF text_color, int fill_percent, PCWSTR face, int supersample,
-                           int gamma_percent)
+                           int gamma_percent, bool use_dwrite)
     : text_color_(text_color), fill_percent_(fill_percent), supersample_(std::max(supersample, 1)),
-      dc_(CreateCompatibleDC(nullptr)) {
+      use_dwrite_(use_dwrite), dc_(CreateCompatibleDC(nullptr)) {
     wcscpy_s(face_, face);
 
     // Coverage comes out of the rasterizer linear, and using it as alpha
@@ -105,10 +108,111 @@ void IconRenderer::ensure_font(UINT dpi) {
         if (widest > 0 && widest <= width_budget && cap_height > 0 && cap_height <= height_budget) {
             font_ = std::move(candidate);
             font_dpi_ = dpi;
+            em_size_ = em;
             baseline_ = (height_ + cap_height) / 2;
+            ensure_dwrite();
             return;
         }
     }
+}
+
+void IconRenderer::ensure_dwrite() {
+    dwrite_face_.reset();
+    dwrite_target_.reset();
+    if (!use_dwrite_ || !dc_ || !font_) {
+        return;
+    }
+
+    if (!dwrite_factory_) {
+        if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+                                       reinterpret_cast<IUnknown**>(dwrite_factory_.put())))) {
+            return;
+        }
+        if (FAILED(dwrite_factory_->GetGdiInterop(dwrite_interop_.put()))) {
+            return;
+        }
+        // Gamma 1.0 and no enhanced contrast: the coverage curve below applies
+        // that correction, so both rasterizers stay comparable on one knob.
+        // ClearType level 0 asks for pure grayscale coverage, which is all an
+        // alpha channel can carry.
+        if (FAILED(dwrite_factory_->CreateCustomRenderingParams(
+                1.0f, 0.0f, 0.0f, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
+                dwrite_params_.put()))) {
+            return;
+        }
+    }
+
+    // The face comes from the HFONT the fitting loop already settled on, so the
+    // sizing rules above stay in one place.
+    const HGDIOBJ previous = SelectObject(dc_.get(), font_.get());
+    const HRESULT face_result = dwrite_interop_->CreateFontFaceFromHdc(dc_.get(), dwrite_face_.put());
+    SelectObject(dc_.get(), previous);
+    if (FAILED(face_result)) {
+        return;
+    }
+
+    if (FAILED(dwrite_interop_->CreateBitmapRenderTarget(nullptr, width_, height_, dwrite_target_.put()))) {
+        dwrite_face_.reset();
+        return;
+    }
+
+    // Without the grayscale mode the target renders ClearType, whose subpixel
+    // coverage cannot survive the trip through a single alpha channel.
+    com_ptr<IDWriteBitmapRenderTarget1> target1;
+    if (FAILED(dwrite_target_->QueryInterface(__uuidof(IDWriteBitmapRenderTarget1), target1.put_void())) ||
+        FAILED(target1->SetTextAntialiasMode(DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE))) {
+        dwrite_face_.reset();
+        dwrite_target_.reset();
+    }
+}
+
+bool IconRenderer::draw_with_dwrite(std::wstring_view text) {
+    if (!dwrite_face_ || !dwrite_target_ || text.size() > kMaxGlyphs) {
+        return false;
+    }
+
+    UINT32 codepoints[kMaxGlyphs]{};
+    for (size_t i = 0; i < text.size(); ++i) {
+        codepoints[i] = text[i];
+    }
+
+    const UINT32 count = static_cast<UINT32>(text.size());
+    UINT16 indices[kMaxGlyphs]{};
+    DWRITE_GLYPH_METRICS glyph_metrics[kMaxGlyphs]{};
+    DWRITE_FONT_METRICS font_metrics{};
+    dwrite_face_->GetMetrics(&font_metrics);
+    if (font_metrics.designUnitsPerEm == 0 ||
+        FAILED(dwrite_face_->GetGlyphIndices(codepoints, count, indices)) ||
+        FAILED(dwrite_face_->GetDesignGlyphMetrics(indices, count, glyph_metrics))) {
+        return false;
+    }
+
+    const FLOAT em = static_cast<FLOAT>(em_size_);
+    const FLOAT scale = em / font_metrics.designUnitsPerEm;
+    FLOAT advances[kMaxGlyphs]{};
+    FLOAT total_advance = 0.0f;
+    for (UINT32 i = 0; i < count; ++i) {
+        advances[i] = glyph_metrics[i].advanceWidth * scale;
+        total_advance += advances[i];
+    }
+
+    DWRITE_GLYPH_RUN run{};
+    run.fontFace = dwrite_face_.get();
+    run.fontEmSize = em;
+    run.glyphCount = count;
+    run.glyphIndices = indices;
+    run.glyphAdvances = advances;
+
+    const HDC target_dc = dwrite_target_->GetMemoryDC();
+    PatBlt(target_dc, 0, 0, width_, height_, BLACKNESS);
+
+    RECT drawn{};
+    // Unlike TextOut this takes a float origin, which is the point: the run is
+    // positioned to a fraction of a pixel instead of being snapped to the grid.
+    return SUCCEEDED(dwrite_target_->DrawGlyphRun((width_ - total_advance) / 2.0f,
+                                                  static_cast<FLOAT>(baseline_),
+                                                  DWRITE_MEASURING_MODE_NATURAL, &run, dwrite_params_.get(),
+                                                  RGB(255, 255, 255), &drawn));
 }
 
 unique_icon IconRenderer::render(std::wstring_view text, UINT dpi) {
@@ -132,22 +236,30 @@ unique_icon IconRenderer::render(std::wstring_view text, UINT dpi) {
     }
 
     const HGDIOBJ previous_bitmap = SelectObject(dc_.get(), sample.get());
-    const HGDIOBJ previous_font = SelectObject(dc_.get(), font_.get());
-    SetBkMode(dc_.get(), TRANSPARENT);
-    // GDI leaves the alpha channel untouched, so the glyphs are drawn white on
-    // the zero-filled (black) DIB and that coverage becomes the alpha below.
-    SetTextColor(dc_.get(), RGB(255, 255, 255));
-    SetTextAlign(dc_.get(), TA_LEFT | TA_BASELINE);
+    if (draw_with_dwrite(text)) {
+        // Both rasterizers leave white-on-black coverage; this one just did it
+        // in DirectWrite's own bitmap, so bring it over.
+        BitBlt(dc_.get(), 0, 0, width_, height_, dwrite_target_->GetMemoryDC(), 0, 0, SRCCOPY);
+        GdiFlush();
+    } else {
+        const HGDIOBJ previous_font = SelectObject(dc_.get(), font_.get());
+        SetBkMode(dc_.get(), TRANSPARENT);
+        // GDI leaves the alpha channel untouched, so the glyphs are drawn white
+        // on the zero-filled (black) DIB and that coverage becomes the alpha
+        // below.
+        SetTextColor(dc_.get(), RGB(255, 255, 255));
+        SetTextAlign(dc_.get(), TA_LEFT | TA_BASELINE);
 
-    SIZE size{};
-    const int length = static_cast<int>(text.size());
-    const int x = GetTextExtentPoint32W(dc_.get(), text.data(), length, &size)
-                      ? (width_ - static_cast<int>(size.cx)) / 2
-                      : 0;
-    TextOutW(dc_.get(), x, baseline_, text.data(), length);
-    GdiFlush(); // DIB bits are only guaranteed to be written back after this
+        SIZE size{};
+        const int length = static_cast<int>(text.size());
+        const int x = GetTextExtentPoint32W(dc_.get(), text.data(), length, &size)
+                          ? (width_ - static_cast<int>(size.cx)) / 2
+                          : 0;
+        TextOutW(dc_.get(), x, baseline_, text.data(), length);
+        GdiFlush(); // DIB bits are only guaranteed to be written back after this
 
-    SelectObject(dc_.get(), previous_font);
+        SelectObject(dc_.get(), previous_font);
+    }
     SelectObject(dc_.get(), previous_bitmap);
 
     info.bmiHeader.biWidth = icon_width_;

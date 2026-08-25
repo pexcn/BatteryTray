@@ -3,6 +3,8 @@
 #include "win32.h"
 #include "win32_raii.h"
 
+#include <dwrite_1.h> // IDWriteBitmapRenderTarget1, for grayscale antialiasing
+
 #include <string_view>
 
 namespace bt {
@@ -30,7 +32,8 @@ inline constexpr wchar_t kDefaultFace[] = L"Segoe UI";
 class IconRenderer {
 public:
     explicit IconRenderer(COLORREF text_color, int fill_percent = kDefaultFillPercent,
-                          PCWSTR face = kDefaultFace, int supersample = 1, int gamma_percent = 100);
+                          PCWSTR face = kDefaultFace, int supersample = 1, int gamma_percent = 100,
+                          bool use_dwrite = false);
 
     // Caller owns the icon; empty on failure.
     [[nodiscard]] unique_icon render(std::wstring_view text, UINT dpi);
@@ -39,8 +42,16 @@ public:
     // for; only valid after a render.
     [[nodiscard]] PCWSTR resolved_face() const { return resolved_face_; }
 
+    // TEMPORARY: whether DirectWrite actually came up, since it falls back to
+    // GDI silently.
+    [[nodiscard]] bool dwrite_active() const { return dwrite_face_ && dwrite_target_; }
+
 private:
     void ensure_font(UINT dpi);
+    void ensure_dwrite();
+    // False when DirectWrite is unavailable or refuses the run, so the caller
+    // can fall back to GDI.
+    bool draw_with_dwrite(std::wstring_view text);
 
     COLORREF text_color_;
     int fill_percent_;
@@ -48,8 +59,16 @@ private:
     wchar_t resolved_face_[LF_FACESIZE] = {}; // TEMPORARY: see resolved_face()
     int supersample_;
     BYTE coverage_curve_[256]; // gamma correction applied to the rasterized coverage
+    bool use_dwrite_;
     unique_dc dc_;
     unique_font font_;
+    // Rebuilt with the font, since both are tied to the fitted em size.
+    com_ptr<IDWriteFactory> dwrite_factory_;
+    com_ptr<IDWriteGdiInterop> dwrite_interop_;
+    com_ptr<IDWriteRenderingParams> dwrite_params_;
+    com_ptr<IDWriteFontFace> dwrite_face_;
+    com_ptr<IDWriteBitmapRenderTarget> dwrite_target_;
+    int em_size_ = 0;
     UINT font_dpi_ = 0;
     int icon_width_ = 0;  // what the tray gets
     int icon_height_ = 0;

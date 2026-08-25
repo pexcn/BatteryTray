@@ -49,6 +49,7 @@ wchar_t g_face_buffer[LF_FACESIZE] = {};
 PCWSTR g_face = kDefaultFace;
 int g_supersample = 1;
 int g_gamma_percent = 100;
+bool g_use_dwrite = false;
 
 int parse_tuning_option(PCWSTR command_line, PCWSTR option, int fallback) {
     const wchar_t* const found = wcsstr(command_line, option);
@@ -130,7 +131,8 @@ class App {
 public:
     explicit App(HINSTANCE instance)
         : instance_(instance),
-          renderer_(read_theme_text_color(), g_fill_percent, g_face, g_supersample, g_gamma_percent) {}
+          renderer_(read_theme_text_color(), g_fill_percent, g_face, g_supersample, g_gamma_percent,
+                    g_use_dwrite) {}
 
     bool create_window();
     int run();
@@ -294,8 +296,9 @@ void App::refresh(bool force) {
         data.hIcon = icon.get();
     }
     // TEMPORARY: the knob values ride along so side by side copies stay apart.
-    swprintf_s(data.szTip, L"%s：%s%%（fill=%d%% %s x%d g%d）", state.charging ? L"正在充电" : L"使用电池",
-               text.c_str(), g_fill_percent, renderer_.resolved_face(), g_supersample, g_gamma_percent);
+    swprintf_s(data.szTip, L"%s：%s%%（fill=%d%% %s x%d g%d %s）", state.charging ? L"正在充电" : L"使用电池",
+               text.c_str(), g_fill_percent, renderer_.resolved_face(), g_supersample, g_gamma_percent,
+               renderer_.dwrite_active() ? L"dwrite" : L"gdi");
     Shell_NotifyIconW(NIM_MODIFY, &data);
 
     // Only now is the previous icon safe to destroy: the shell has been handed
@@ -368,6 +371,7 @@ int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE, _In_ PWSTR comm
         g_face = parse_tuning_face(command_line);
         g_supersample = parse_tuning_option(command_line, L"--supersample=", 1);
         g_gamma_percent = parse_tuning_option(command_line, L"--gamma=", 100);
+        g_use_dwrite = wcsstr(command_line, L"--dwrite") != nullptr;
     }
 
     // Optional single instance guard: a second copy would just stack another

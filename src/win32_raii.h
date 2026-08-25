@@ -77,6 +77,52 @@ struct file_traits {
     static void close(HANDLE value) noexcept { CloseHandle(value); }
 };
 
+// COM interfaces release themselves rather than going through a free function,
+// so they need their own owner rather than another traits type.
+template <typename T>
+class com_ptr {
+public:
+    com_ptr() noexcept = default;
+
+    com_ptr(com_ptr&& other) noexcept : value_(std::exchange(other.value_, nullptr)) {}
+
+    com_ptr& operator=(com_ptr&& other) noexcept {
+        if (this != &other) {
+            reset();
+            value_ = std::exchange(other.value_, nullptr);
+        }
+        return *this;
+    }
+
+    com_ptr(const com_ptr&) = delete;
+    com_ptr& operator=(const com_ptr&) = delete;
+
+    ~com_ptr() { reset(); }
+
+    [[nodiscard]] T* get() const noexcept { return value_; }
+    T* operator->() const noexcept { return value_; }
+    explicit operator bool() const noexcept { return value_ != nullptr; }
+
+    // For the out parameter of a creation call, which always writes a fresh
+    // reference into an otherwise empty pointer.
+    [[nodiscard]] T** put() noexcept {
+        reset();
+        return &value_;
+    }
+
+    [[nodiscard]] void** put_void() noexcept { return reinterpret_cast<void**>(put()); }
+
+    void reset() noexcept {
+        if (value_) {
+            value_->Release();
+            value_ = nullptr;
+        }
+    }
+
+private:
+    T* value_ = nullptr;
+};
+
 using unique_icon = unique_handle<HICON, icon_traits>;
 using unique_font = unique_handle<HFONT, gdi_object_traits<HFONT>>;
 using unique_bitmap = unique_handle<HBITMAP, gdi_object_traits<HBITMAP>>;
