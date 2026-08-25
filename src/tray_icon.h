@@ -21,10 +21,13 @@ private:
     void ensure_font(UINT dpi);
 
     COLORREF text_color_;
+    BYTE coverage_curve_[256]; // see kCoverageGammaPercent
     unique_dc dc_;
     unique_font font_;
     UINT font_dpi_ = 0;
-    int width_ = 0;
+    int icon_width_ = 0; // what the tray gets
+    int icon_height_ = 0;
+    int width_ = 0; // what the glyphs are rasterized into, kSupersample times larger
     int height_ = 0;
     int baseline_ = 0;
 };
