@@ -10,6 +10,7 @@
 
 #include <cwchar>
 #include <string>
+#include <utility>
 
 namespace bt {
 namespace {
@@ -30,10 +31,23 @@ bool query_information(HANDLE device, ULONG tag, BATTERY_QUERY_INFORMATION_LEVEL
                            &returned, nullptr) != 0;
 }
 
-bool read_device(const wchar_t* path, BatteryPower& power) {
-    const unique_file device(CreateFileW(path, GENERIC_READ | GENERIC_WRITE,
-                                         FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
-                                         FILE_ATTRIBUTE_NORMAL, nullptr));
+} // namespace
+
+BatteryState query_battery_state() {
+    SYSTEM_POWER_STATUS status{};
+    if (!GetSystemPowerStatus(&status)) {
+        return {};
+    }
+    BatteryState state;
+    // Like the original, treat "unknown" as full rather than showing nothing.
+    state.percent = status.BatteryLifePercent == 255 ? 100 : static_cast<int>(status.BatteryLifePercent);
+    state.charging = status.ACLineStatus == 1;
+    return state;
+}
+
+bool BatteryDevice::bind(const wchar_t* path) {
+    unique_file device(CreateFileW(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                   nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
     if (!device) {
         return false;
     }
@@ -55,35 +69,23 @@ bool read_device(const wchar_t* path, BatteryPower& power) {
                            static_cast<DWORD>(sizeof(information)))) {
         return false;
     }
-    // BATTERY_CAPACITY_RELATIVE means the capacity numbers are in units the
-    // driver never defines, so mWh arithmetic on them is meaningless. Skipping
-    // such a pack also skips UPS units, which are not the system battery.
     if ((information.Capabilities & BATTERY_SYSTEM_BATTERY) == 0 ||
         (information.Capabilities & BATTERY_CAPACITY_RELATIVE) != 0) {
         return false;
     }
 
-    BATTERY_WAIT_STATUS wait_status{};
-    wait_status.BatteryTag = tag;
-    BATTERY_STATUS status{};
-    if (!DeviceIoControl(device.get(), IOCTL_BATTERY_QUERY_STATUS, &wait_status, sizeof(wait_status),
-                         &status, sizeof(status), &returned, nullptr)) {
-        return false;
-    }
-
-    power.full_charge_mwh =
+    facts_.design_mwh =
+        information.DesignedCapacity == BATTERY_UNKNOWN_CAPACITY ? 0 : information.DesignedCapacity;
+    facts_.full_charge_mwh =
         information.FullChargedCapacity == BATTERY_UNKNOWN_CAPACITY ? 0 : information.FullChargedCapacity;
-    power.remaining_mwh = status.Capacity == BATTERY_UNKNOWN_CAPACITY ? 0 : status.Capacity;
-    // BATTERY_UNKNOWN_RATE is spelled 0x80000000, which is unsigned; comparing a
-    // LONG against it directly is a signed/unsigned mismatch under /W4.
-    power.rate_mw = status.Rate == static_cast<LONG>(BATTERY_UNKNOWN_RATE) ? 0 : status.Rate;
+    facts_.cycle_count = information.CycleCount;
+    device_ = std::move(device);
+    tag_ = tag;
     return true;
 }
 
-} // namespace
-
-BatteryPower query_battery_power() {
-    BatteryPower power;
+bool BatteryDevice::open() {
+    close();
 
     // cfgmgr32 rather than setupapi: the same interface list costs one size call
     // and one fetch here, against a device info set and the two-call detail
@@ -93,24 +95,80 @@ BatteryPower query_battery_power() {
     if (CM_Get_Device_Interface_List_SizeW(&length, &interface_guid, nullptr,
                                            CM_GET_DEVICE_INTERFACE_LIST_PRESENT) != CR_SUCCESS ||
         length < 2) {
-        return power;
+        return false;
     }
 
     std::wstring paths(length, L'\0');
     if (CM_Get_Device_Interface_ListW(&interface_guid, nullptr, paths.data(), length,
                                       CM_GET_DEVICE_INTERFACE_LIST_PRESENT) != CR_SUCCESS) {
-        return power;
+        return false;
     }
 
     // A multi-sz of interface paths. Laptops report a single pack, so the first
     // device that answers wins; summing multiple packs would need their rates to
     // be in the same units, which the class driver does not promise.
     for (const wchar_t* path = paths.c_str(); *path != L'\0'; path += wcslen(path) + 1) {
-        if (read_device(path, power)) {
-            break;
+        if (bind(path)) {
+            return true;
         }
     }
-    return power;
+    return false;
+}
+
+void BatteryDevice::close() noexcept {
+    device_.reset();
+    tag_ = 0;
+    facts_ = {};
+}
+
+bool BatteryDevice::read_sample(BatterySample& sample) const {
+    if (!device_) {
+        return false;
+    }
+
+    BATTERY_WAIT_STATUS wait_status{};
+    wait_status.BatteryTag = tag_;
+    BATTERY_STATUS status{};
+    DWORD returned = 0;
+    if (!DeviceIoControl(device_.get(), IOCTL_BATTERY_QUERY_STATUS, &wait_status, sizeof(wait_status),
+                         &status, sizeof(status), &returned, nullptr)) {
+        return false;
+    }
+
+    sample = {};
+    sample.remaining_mwh = status.Capacity == BATTERY_UNKNOWN_CAPACITY ? 0 : status.Capacity;
+    // BATTERY_UNKNOWN_RATE is spelled 0x80000000, which is unsigned; comparing a
+    // LONG against it directly is a signed/unsigned mismatch under /W4.
+    sample.rate_mw = status.Rate == static_cast<LONG>(BATTERY_UNKNOWN_RATE) ? 0 : status.Rate;
+
+    // Unlike CycleCount, an unsupported temperature fails the call outright
+    // (ERROR_INVALID_FUNCTION / ERROR_NOT_SUPPORTED) instead of answering zero,
+    // so availability is the return value, never the value itself.
+    ULONG tenths_kelvin = 0; // BatteryTemperature reports 0.1 K units
+    if (query_information(device_.get(), tag_, BatteryTemperature, &tenths_kelvin,
+                          static_cast<DWORD>(sizeof(tenths_kelvin)))) {
+        const double celsius = tenths_kelvin / 10.0 - 273.15;
+        // Drivers have been seen returning 0 K or 2731 (exactly 0.00 C) for a
+        // field they never filled in. Outside this range the number is either
+        // made up or the pack is in trouble, and neither belongs on screen.
+        if (celsius >= 0.0 && celsius <= 80.0) {
+            sample.celsius = celsius;
+            sample.has_temperature = true;
+        }
+    }
+    return true;
+}
+
+BatteryDate BatteryDevice::read_manufacture_date() const {
+    BatteryDate date;
+    BATTERY_MANUFACTURE_DATE raw{};
+    if (device_ && query_information(device_.get(), tag_, BatteryManufactureDate, &raw,
+                                     static_cast<DWORD>(sizeof(raw))) &&
+        raw.Year != 0) {
+        date.year = raw.Year;
+        date.month = raw.Month;
+    }
+    return date;
 }
 
 } // namespace bt

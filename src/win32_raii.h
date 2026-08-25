@@ -80,6 +80,8 @@ struct file_traits {
 using unique_icon = unique_handle<HICON, icon_traits>;
 using unique_font = unique_handle<HFONT, gdi_object_traits<HFONT>>;
 using unique_bitmap = unique_handle<HBITMAP, gdi_object_traits<HBITMAP>>;
+using unique_brush = unique_handle<HBRUSH, gdi_object_traits<HBRUSH>>;
+using unique_pen = unique_handle<HPEN, gdi_object_traits<HPEN>>;
 using unique_dc = unique_handle<HDC, dc_traits>;
 using unique_regkey = unique_handle<HKEY, regkey_traits>;
 using unique_kernel_handle = unique_handle<HANDLE, kernel_handle_traits>;

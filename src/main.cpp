@@ -12,8 +12,10 @@
 #include <string>
 
 #include "autostart.h"
+#include "battery_history.h"
 #include "battery_log.h"
 #include "battery_power.h"
+#include "info_panel.h"
 #include "tray_icon.h"
 #include "util.h"
 #include "win32_raii.h"
@@ -36,38 +38,8 @@ constexpr wchar_t kSingletonMutexName[] = L"Local\\BatteryTray.singleton";
 // its icon then.
 UINT g_taskbar_created = 0;
 
-struct BatteryState {
-    int percent;
-    bool charging;
-};
-
-BatteryState query_battery() {
-    SYSTEM_POWER_STATUS status{};
-    if (!GetSystemPowerStatus(&status)) {
-        return {100, false};
-    }
-    // 255 means "unknown", which is what a machine without a battery reports;
-    // like the original, treat that as full rather than showing nothing.
-    const int percent = status.BatteryLifePercent == 255 ? 100 : static_cast<int>(status.BatteryLifePercent);
-    return {percent, status.ACLineStatus == 1};
-}
-
 std::wstring display_text(int percent) {
     return percent > 99 ? std::wstring(L"FL") : std::to_wstring(percent);
-}
-
-// Seconds are worth showing only while the span is short enough to watch tick
-// by; past an hour they are noise around an estimate that is already an
-// extrapolation from one instantaneous sample.
-std::wstring format_duration(double seconds) {
-    const long long total = static_cast<long long>(seconds);
-    if (total >= 3600) {
-        return std::to_wstring(total / 3600) + L"小时" + std::to_wstring(total % 3600 / 60) + L"分";
-    }
-    if (total >= 60) {
-        return std::to_wstring(total / 60) + L"分" + std::to_wstring(total % 60) + L"秒";
-    }
-    return std::to_wstring(total) + L"秒";
 }
 
 // The tray tooltip is where "how long does one percent last" gets answered:
@@ -78,27 +50,34 @@ std::wstring build_tooltip(const BatteryState& state) {
     tip += display_text(state.percent);
     tip += L'%';
 
-    const BatteryPower power = query_battery_power();
-    const long rate = power.rate_mw < 0 ? -power.rate_mw : power.rate_mw;
+    // Opened and dropped again around a single sample: unlike the info panel,
+    // this runs on a hover, and holding the device between hovers would keep a
+    // handle alive through hours of idling for nothing.
+    BatteryDevice device;
+    BatterySample sample;
+    if (!device.open() || !device.read_sample(sample)) {
+        return tip;
+    }
+    const long rate = sample.rate_mw < 0 ? -sample.rate_mw : sample.rate_mw;
+    const unsigned long full_mwh = device.facts().full_charge_mwh;
     // No battery, a driver that reports neither, or a pack sitting at full on
     // AC with nothing flowing: the percentage alone is all there is to say.
-    if (rate == 0 || power.full_charge_mwh == 0) {
+    if (rate == 0 || full_mwh == 0) {
         return tip;
     }
 
     wchar_t line[64];
-    const double one_percent_seconds = power.full_charge_mwh / 100.0 / rate * 3600.0;
-    swprintf_s(line, L"\r\n%s %.1f W · 每 1%% 约 %s", power.rate_mw > 0 ? L"充电" : L"功耗",
-               rate / 1000.0, format_duration(one_percent_seconds).c_str());
+    const double one_percent_seconds = full_mwh / 100.0 / rate * 3600.0;
+    swprintf_s(line, L"\r\n%s %.1f W · 每 1%% 约 %s", sample.rate_mw > 0 ? L"充电" : L"功耗", rate / 1000.0,
+               format_duration(one_percent_seconds).c_str());
     tip += line;
 
     // Direction comes from the rate, not from ACLineStatus: a full pack on AC
     // is plugged in without charging.
-    const bool charging = power.rate_mw > 0;
-    const unsigned long energy = charging ? (power.full_charge_mwh > power.remaining_mwh
-                                                 ? power.full_charge_mwh - power.remaining_mwh
-                                                 : 0)
-                                          : power.remaining_mwh;
+    const bool charging = sample.rate_mw > 0;
+    const unsigned long energy =
+        charging ? (full_mwh > sample.remaining_mwh ? full_mwh - sample.remaining_mwh : 0)
+                 : sample.remaining_mwh;
     if (energy != 0) {
         swprintf_s(line, L"\r\n预计%s %s", charging ? L"充满" : L"剩余",
                    format_duration(energy / static_cast<double>(rate) * 3600.0).c_str());
@@ -112,33 +91,12 @@ void set_tooltip(NOTIFYICONDATAW& data, const BatteryState& state) {
     wcsncpy_s(data.szTip, tip.c_str(), _TRUNCATE);
 }
 
-// Sampled once at startup, matching the original: following live theme changes
-// would mean re-rendering on broadcast messages for a setting nobody flips
-// while watching the tray.
-COLORREF read_theme_text_color() {
-    constexpr COLORREF kDarkThemeText = RGB(255, 255, 255);
-
-    HKEY raw = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0,
-                      KEY_QUERY_VALUE, &raw) != ERROR_SUCCESS) {
-        return kDarkThemeText;
-    }
-    const unique_regkey key(raw);
-
-    DWORD type = 0;
-    DWORD value = 0;
-    DWORD size = sizeof(value);
-    if (RegQueryValueExW(key.get(), L"SystemUsesLightTheme", nullptr, &type, reinterpret_cast<BYTE*>(&value),
-                         &size) != ERROR_SUCCESS ||
-        type != REG_DWORD || size != sizeof(value)) {
-        return kDarkThemeText;
-    }
-    return value == 1 ? RGB(0, 0, 0) : kDarkThemeText;
-}
-
 class App {
 public:
-    explicit App(HINSTANCE instance) : instance_(instance), renderer_(read_theme_text_color()) {}
+    explicit App(HINSTANCE instance)
+        : instance_(instance), light_theme_(system_uses_light_theme()),
+          renderer_(light_theme_ ? RGB(0, 0, 0) : RGB(255, 255, 255)),
+          panel_(instance, history_, light_theme_) {}
 
     bool create_window();
     int run();
@@ -155,9 +113,12 @@ private:
 
     HINSTANCE instance_;
     HWND window_ = nullptr;
+    bool light_theme_;
     IconRenderer renderer_;
     unique_icon icon_;
     BatteryLog log_;
+    BatteryHistory history_;
+    InfoPanel panel_;
     HPOWERNOTIFY power_notify_ = nullptr;
     int last_percent_ = -1;
     bool last_charging_ = false;
@@ -229,6 +190,11 @@ LRESULT App::handle_message(UINT message, WPARAM wparam, LPARAM lparam) {
         // the charger being plugged or pulled.
         if (wparam == PBT_POWERSETTINGCHANGE || wparam == PBT_APMPOWERSTATUSCHANGE) {
             refresh(false);
+        } else if (wparam == PBT_APMSUSPEND) {
+            // A percent step that spans a sleep took eight hours of wall clock
+            // and no use at all; the resume needs no handler of its own, because
+            // the next percent change restarts the interval either way.
+            history_.discard_pending();
         }
         return TRUE;
 
@@ -240,6 +206,13 @@ LRESULT App::handle_message(UINT message, WPARAM wparam, LPARAM lparam) {
         switch (LOWORD(lparam)) {
         case WM_CONTEXTMENU:
             show_menu(GET_X_LPARAM(wparam), GET_Y_LPARAM(wparam));
+            break;
+        case WM_LBUTTONDBLCLK:
+        case NIN_KEYSELECT:
+            // Double click only. A single click on a tray icon is the easiest
+            // thing on the taskbar to hit by accident, and NIN_KEYSELECT is the
+            // keyboard's equivalent of the double click.
+            panel_.toggle(window_, kTrayIconId);
             break;
         case NIN_POPUPOPEN:
             // The draw shown in the tooltip is instantaneous, so a value left
@@ -290,7 +263,11 @@ void App::remove_tray_icon() {
 }
 
 void App::refresh(bool force) {
-    const BatteryState state = query_battery();
+    const BatteryState state = query_battery_state();
+    // Fed unconditionally: the ring itself ignores readings that did not move,
+    // and it has to keep filling while the panel is closed - that is what makes
+    // the elapsed steps there worth anything the moment it opens.
+    history_.observe(state.percent, state.charging);
     const bool changed = !has_last_ || state.percent != last_percent_ || state.charging != last_charging_;
     // Power events repeat; rebuilding the icon for an unchanged reading would be
     // the only work this program ever does at idle.
@@ -337,7 +314,7 @@ void App::refresh_tooltip() {
     data.hWnd = window_;
     data.uID = kTrayIconId;
     data.uFlags = NIF_TIP | NIF_SHOWTIP;
-    set_tooltip(data, query_battery());
+    set_tooltip(data, query_battery_state());
     Shell_NotifyIconW(NIM_MODIFY, &data);
 }
 

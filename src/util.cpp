@@ -1,6 +1,7 @@
 #include "util.h"
 
 #include "win32.h"
+#include "win32_raii.h"
 
 namespace bt {
 
@@ -32,6 +33,36 @@ std::wstring module_directory() {
     }
     path.resize(separator);
     return path;
+}
+
+bool system_uses_light_theme() {
+    HKEY raw = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                      0, KEY_QUERY_VALUE, &raw) != ERROR_SUCCESS) {
+        return false;
+    }
+    const unique_regkey key(raw);
+
+    DWORD type = 0;
+    DWORD value = 0;
+    DWORD size = sizeof(value);
+    if (RegQueryValueExW(key.get(), L"SystemUsesLightTheme", nullptr, &type, reinterpret_cast<BYTE*>(&value),
+                         &size) != ERROR_SUCCESS ||
+        type != REG_DWORD || size != sizeof(value)) {
+        return false;
+    }
+    return value == 1;
+}
+
+std::wstring format_duration(double seconds) {
+    const long long total = static_cast<long long>(seconds);
+    if (total >= 3600) {
+        return std::to_wstring(total / 3600) + L"小时" + std::to_wstring(total % 3600 / 60) + L"分";
+    }
+    if (total >= 60) {
+        return std::to_wstring(total / 60) + L"分" + std::to_wstring(total % 60) + L"秒";
+    }
+    return std::to_wstring(total) + L"秒";
 }
 
 } // namespace bt
