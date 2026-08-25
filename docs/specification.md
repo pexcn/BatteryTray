@@ -26,6 +26,8 @@
        - 验收时必须确认 exe 的导入表里没有 `vcruntime140.dll` / `msvcp140.dll`（`dumpbin /dependents`，或 MSYS2 的 `objdump -p`）。
      - manifest 与图标资源用 `rc.exe` 编译 `.rc` 嵌入（也可用 `/MANIFEST` / `mt.exe`）。
    - `/OPT:REF,ICF` 已做冗余消除；如仍需进一步压缩需说明取舍。
+     - 再往下压只剩绕开 CRT 这条路（`/NODEFAULTLIB` + 自定义入口点），代价是全局对象的构造/析构与
+       静态初始化都要自己接管。**本项目不这么做**：省下的那点体积买不回这份长期维护成本。
    - 不链接系统库以外的任何东西；不引入 vcpkg/conan 等包管理器。
 3. **零第三方依赖**：只允许使用 Windows 自带的系统库（user32、gdi32、shell32、advapi32、cfgmgr32、gdiplus 等）与 C++ 标准库。**禁止**引入任何外部开源库、框架或 NuGet/vcpkg 包。
    - 文字绘制优先用纯 GDI（`CreateFont` + `TextOut` + `GetTextExtentPoint32`）以避免依赖 GDI+；若为字形质量选用 GDI+，需说明理由并确保 `gdiplus.dll` 是系统自带、无需分发。
@@ -175,7 +177,22 @@
 
 ## 4. 交付物
 
-1. 完整可编译的 C++ 源码（可单文件 `main.cpp`，也可按职责合理拆分为少量文件，但保持简单）。
+1. 完整可编译的 C++ 源码，按职责拆成少量文件，保持简单。当前划分：
+
+   | 文件 | 职责 |
+   | --- | --- |
+   | `src/main.cpp` | 隐藏窗口、电源事件、托盘图标与右键菜单 |
+   | `src/tray_icon.cpp` | 把电量文字渲染成带 alpha 的 `HICON` |
+   | `src/battery_power.cpp` | 从电池驱动读 mWh / mW，供 tooltip 算功耗与时长 |
+   | `src/battery_log.cpp` | 电量日志的写入与滚动 |
+   | `src/autostart.cpp` | 注册表 `Run` 项的读写 |
+   | `src/util.cpp` | exe 全路径与所在目录 |
+   | `src/win32.h` | Windows 头文件的统一配置（`UNICODE`、`WINVER` 等） |
+   | `src/win32_raii.h` | GDI / 内核句柄的 RAII 包装 |
+   | `src/BatteryTray.rc` | manifest、图标与 `VERSIONINFO` 的资源脚本 |
+   | `tools/make_icon.ps1` | 设计期生成 exe 的文件图标 `src/BatteryTray.ico` |
+
+   增删或合并文件时同步改这张表。
 2. 一份应用程序 manifest（DPI 感知、`requestedExecutionLevel` 为 `asInvoker`）及其嵌入方式说明。
 3. 构建说明：MSVC 命令（见 [1.2](#1-硬性约束最高优先级)：`/O2 /GL /Gw /DNDEBUG /MT` + `/LTCG /OPT:REF,ICF`、UCRT 混合链接、Release 无 PDB）；说明如何嵌入 manifest 与图标资源（`.rc`）。
 4. 简短 README 段落：功能、构建、使用（放进启动文件夹或用菜单「开机启动」）。
