@@ -4,9 +4,9 @@
 本文档描述它的功能规格与实现约束。
 
 程序最初用 C#/.NET Framework 4.8.1 + WinForms 实现，现已重写为**原生 C++（C++23）+ Win32 API**。
-下文描述的是**功能需求与用户可见效果**，不是对某一版实现的逐行记录；凡是原生 Win32 有更优、更省资源、
-更健壮的做法（用电源事件通知替代轮询、用纯 GDI 替代 GDI+、更高效的图标缓存策略等），实现上都应优先采用。
-目标是一个**零第三方依赖、极低 CPU/内存占用、不含调试信息**的原生实现。
+下文描述的是**功能需求与用户可见效果**，不是逐行实现记录；凡原生 Win32 有更优、更省资源、更健壮的做法
+（电源事件替代轮询、纯 GDI 替代 GDI+、更高效的图标缓存等）都应优先采用。目标是**零第三方依赖、极低
+CPU/内存占用、不含调试信息**的原生实现。
 
 ## 1. 硬性约束（最高优先级）
 
@@ -20,9 +20,9 @@
      - 优化 + 去调试信息：`cl /std:c++latest /O2 /GL /Gw /DNDEBUG /MT ...`（`/std:c++latest` 启用 C++23 特性），链接 `/LTCG /OPT:REF,ICF`，**Release 不生成 PDB**（等价于 strip）。
      - **CRT 用混合链接**：UCRT 动态、vcruntime 与 C++ 标准库静态，即 `/MT` 再叠加
        `/link /NODEFAULTLIB:libucrt.lib ucrt.lib`。
-       - 目的是**单文件零 redist**：`vcruntime140.dll` / `msvcp140.dll` 不随 Windows 分发，一旦依赖它们就得让用户先装 VC++ 可再发行包，与 [1.4](#1-硬性约束最高优先级) 冲突；而 `ucrtbase.dll` 从 Windows 10 起就是系统自带组件，与 user32、gdi32 同级，依赖它不破坏零第三方依赖。
-       - **前提：目标平台为 Windows 10（LTSC 2021 / build 19044 及以上）。** 若目标要回退到 Win7/Win8（UCRT 在那里需要单独更新才有），改回 `/MT` 全静态。
-       - 全静态 CRT 也满足零 redist，但体积明显更大（UCRT 是静态 CRT 里的大头），且 CRT 的安全补丁只能靠重新发版；**「静态 CRT 体积最小」是错的**，静态换来的是无依赖而非小体积。
+       - 目的是**单文件零 redist**：`vcruntime140.dll` / `msvcp140.dll` 不随 Windows 分发，依赖它们就得让用户先装 VC++ 可再发行包，与 [1.4](#1-硬性约束最高优先级) 冲突；而 `ucrtbase.dll` 从 Windows 10 起就与 user32、gdi32 同级系统自带，依赖它不破坏零第三方依赖。
+       - **前提：目标平台为 Windows 10（LTSC 2021 / build 19044 及以上）。** 若要回退到 Win7/Win8（UCRT 在那里需单独更新），改回 `/MT` 全静态。
+       - 全静态 CRT 也满足零 redist，但体积明显更大（UCRT 是静态 CRT 里的大头），且安全补丁只能靠重新发版；**「静态 CRT 体积最小」是错的**，静态换来的是无依赖而非小体积。
        - 验收时必须确认 exe 的导入表里没有 `vcruntime140.dll` / `msvcp140.dll`（`dumpbin /dependents`，或 MSYS2 的 `objdump -p`）。
      - manifest 与图标资源用 `rc.exe` 编译 `.rc` 嵌入（也可用 `/MANIFEST` / `mt.exe`）。
    - `/OPT:REF,ICF` 已做冗余消除；如仍需进一步压缩需说明取舍。
@@ -38,7 +38,7 @@
 
 ### 2.1 进程形态
 
-无主窗口的托盘常驻程序，进程通过消息循环常驻。它有两个窗口：**一个隐藏的消息窗口**（常驻，从不显示）
+无主窗口的托盘常驻程序，靠消息循环常驻。它有两个窗口：**一个隐藏的消息窗口**（常驻，从不显示）
 与**一个按需显示的面板窗口**（见 [2.10](#210-电池信息面板)，单击托盘图标才创建并显示，平时隐藏）。
 
 消息窗口是**隐藏的普通顶层窗口**（正常 `CreateWindowEx` 创建，但从不 `ShowWindow`、不带 `WS_VISIBLE`），
@@ -447,7 +447,6 @@
 - 单例：用命名 mutex 防止重复启动。
 - 正确处理 DPI（至少声明 per-monitor DPI aware 或 system DPI aware，通过 manifest 或 `SetProcessDpiAwarenessContext`），避免高分屏下图标模糊或尺寸错误。
 - 托盘图标在 explorer.exe 重启后应能恢复：注册并处理 `TaskbarCreated` 消息，重新 `NIM_ADD`。
-
 ## 4. 交付物
 
 1. 完整可编译的 C++ 源码，按职责拆成少量文件，保持简单。当前划分：
