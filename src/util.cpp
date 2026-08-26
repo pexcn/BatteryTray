@@ -94,17 +94,30 @@ void apply_menu_theme(bool light_theme) {
     flush_menu_themes();
 }
 
+namespace {
+
+std::wstring compose_duration(double seconds, const wchar_t* gap) {
+    const long long total = static_cast<long long>(seconds);
+    if (total >= 3600) {
+        return std::to_wstring(total / 3600) + gap + L"小时" + gap + std::to_wstring(total % 3600 / 60) +
+               gap + L"分";
+    }
+    if (total >= 60) {
+        return std::to_wstring(total / 60) + gap + L"分" + gap + std::to_wstring(total % 60) + gap + L"秒";
+    }
+    return std::to_wstring(total) + gap + L"秒";
+}
+
+} // namespace
+
 // A unit is set off from its digits the way every other number in the UI sets
 // one off, Latin or Chinese alike: 6.3 W, 每变化 1%, 3 分 58 秒.
 std::wstring format_duration(double seconds) {
-    const long long total = static_cast<long long>(seconds);
-    if (total >= 3600) {
-        return std::to_wstring(total / 3600) + L" 小时 " + std::to_wstring(total % 3600 / 60) + L" 分";
-    }
-    if (total >= 60) {
-        return std::to_wstring(total / 60) + L" 分 " + std::to_wstring(total % 60) + L" 秒";
-    }
-    return std::to_wstring(total) + L" 秒";
+    return compose_duration(seconds, L" ");
+}
+
+std::wstring format_duration_compact(double seconds) {
+    return compose_duration(seconds, L"");
 }
 
 } // namespace bt

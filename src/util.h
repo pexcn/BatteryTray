@@ -26,4 +26,9 @@ void apply_menu_theme(bool light_theme);
 // extrapolation from one instantaneous sample.
 std::wstring format_duration(double seconds);
 
+// The same span with the spaces squeezed out (6分12秒). The UI sets a unit off
+// from its digits, but in the log these stack up in a column that is already
+// doing that job, and the spaces only make the column wider for nothing.
+std::wstring format_duration_compact(double seconds);
+
 } // namespace bt
