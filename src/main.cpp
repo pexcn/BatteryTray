@@ -49,7 +49,7 @@ std::wstring display_text(int percent) {
 std::wstring build_tooltip(const BatteryState& state) {
     std::wstring tip = charge_state_text(state.charge);
     tip += L'：';
-    tip += display_text(state.percent);
+    tip += std::to_wstring(state.percent);
     tip += L'%';
 
     // Opened and dropped again around a single sample: unlike the info panel,
