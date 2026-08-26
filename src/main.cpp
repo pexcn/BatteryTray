@@ -102,7 +102,11 @@ public:
     explicit App(HINSTANCE instance)
         : instance_(instance), light_theme_(system_uses_light_theme()),
           renderer_(light_theme_ ? RGB(0, 0, 0) : RGB(255, 255, 255)),
-          panel_(instance, history_, light_theme_) {}
+          panel_(instance, history_, light_theme_) {
+        // Process wide and read once, like the two palettes above it; the menu
+        // itself is built fresh on every click and picks the theme up from here.
+        apply_menu_theme(light_theme_);
+    }
 
     bool create_window();
     int run();

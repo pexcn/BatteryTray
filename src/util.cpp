@@ -54,6 +54,46 @@ bool system_uses_light_theme() {
     return value == 1;
 }
 
+void apply_menu_theme(bool light_theme) {
+    if (light_theme) {
+        return; // what uxtheme does by default; not worth loading a DLL to ask for
+    }
+
+    // Popup menus are drawn by user32 out of the system's Menu theme, and Win32
+    // has never exposed which of the two it picks. The switch the shell uses for
+    // itself lives in uxtheme, exported by ordinal only: 135 is
+    // SetPreferredAppMode and 136 is FlushMenuThemes, which makes user32 drop
+    // the menu theme it has already cached. Ordinal 135 was AllowDarkModeForApp
+    // with a different signature before build 18362, but the target floor here
+    // is 19044 (specification 1.2), so there is only one meaning to hit.
+    enum PreferredAppMode { Default, AllowDark, ForceDark, ForceLight };
+    using SetPreferredAppModeFn = PreferredAppMode(WINAPI*)(PreferredAppMode);
+    using FlushMenuThemesFn = void(WINAPI*)();
+
+    // System32 only: an ordinal taken from whatever uxtheme.dll happens to sit
+    // earlier on the search path is a DLL plant with extra steps. Deliberately
+    // never freed - the mode is uxtheme's own process state, and user32 holds
+    // the library for theming regardless.
+    const HMODULE uxtheme = LoadLibraryExW(L"uxtheme.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!uxtheme) {
+        return;
+    }
+    const auto set_preferred_app_mode =
+        reinterpret_cast<SetPreferredAppModeFn>(GetProcAddress(uxtheme, MAKEINTRESOURCEA(135)));
+    const auto flush_menu_themes =
+        reinterpret_cast<FlushMenuThemesFn>(GetProcAddress(uxtheme, MAKEINTRESOURCEA(136)));
+    if (!set_preferred_app_mode || !flush_menu_themes) {
+        return; // the menu stays light, which is where it was
+    }
+
+    // Forced, not AllowDark: left to itself uxtheme follows AppsUseLightTheme,
+    // while the icon and the panel follow SystemUsesLightTheme, and the user can
+    // set those two the opposite way round - one program showing both themes at
+    // once is worse than a menu on the wrong one.
+    set_preferred_app_mode(ForceDark);
+    flush_menu_themes();
+}
+
 // A unit is set off from its digits the way every other number in the UI sets
 // one off, Latin or Chinese alike: 6.3 W, 每变化 1%, 3 分 58 秒.
 std::wstring format_duration(double seconds) {

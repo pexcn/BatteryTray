@@ -16,6 +16,11 @@ std::wstring module_directory();
 // on a broadcast for a setting nobody flips while watching the tray.
 bool system_uses_light_theme();
 
+// Points user32 at the dark Menu theme for this process, so the tray icon's
+// context menu matches the icon and the panel. A no-op on the light theme, and
+// on anything that does not offer the switch.
+void apply_menu_theme(bool light_theme);
+
 // Seconds are worth showing only while the span is short enough to watch tick
 // by; past an hour they are noise around an estimate that is already an
 // extrapolation from one instantaneous sample.
