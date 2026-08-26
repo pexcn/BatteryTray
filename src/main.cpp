@@ -202,9 +202,17 @@ LRESULT App::handle_message(UINT message, WPARAM wparam, LPARAM lparam) {
             refresh(false);
         } else if (wparam == PBT_APMSUSPEND) {
             // A percent step that spans a sleep took eight hours of wall clock
-            // and no use at all; the resume needs no handler of its own, because
-            // the next percent change restarts the interval either way.
+            // and no use at all, so the ring drops the one in progress. It needs
+            // no resume handler, because the next percent change restarts the
+            // interval either way; the log does need one, since eight hours
+            // missing from the file is exactly what its two lines are for.
             history_.discard_pending();
+            log_.note_suspend(query_battery_state());
+        } else if (wparam == PBT_APMRESUMEAUTOMATIC) {
+            // Every resume delivers this one. PBT_APMRESUMESUSPEND comes only
+            // when a person woke the machine, so handling both would write the
+            // pair of lines twice for half of all wake-ups.
+            log_.note_resume(query_battery_state());
         }
         return TRUE;
 
@@ -237,6 +245,9 @@ LRESULT App::handle_message(UINT message, WPARAM wparam, LPARAM lparam) {
         return 0;
 
     case WM_DESTROY:
+        // Before the icon goes, so the file says the program left rather than
+        // trailing off into a gap that looks like a sleep.
+        log_.stop();
         remove_tray_icon();
         if (power_notify_) {
             UnregisterPowerSettingNotification(power_notify_);
@@ -278,6 +289,10 @@ void App::refresh(bool force) {
     // and it has to keep filling while the panel is closed - that is what makes
     // the elapsed steps there worth anything the moment it opens.
     history_.observe(state.percent, state.charge);
+    // Deduplicates on its own the same way, and for the same reason it has to:
+    // which line to write depends on which half of the reading moved, and only
+    // the log is tracking that.
+    log_.observe(state);
     const bool changed = !has_last_ || state.percent != last_percent_ || state.charge != last_charge_;
     // Power events repeat; rebuilding the icon for an unchanged reading would be
     // the only work this program ever does at idle.
@@ -315,7 +330,6 @@ void App::refresh(bool force) {
     last_percent_ = state.percent;
     last_charge_ = state.charge;
     has_last_ = true;
-    log_.append_status(text, state.charge);
 }
 
 void App::refresh_tooltip() {
@@ -355,7 +369,10 @@ void App::show_menu(int x, int y) {
         if (log_.enabled()) {
             log_.stop();
         } else {
-            log_.start(); // stays unchecked when the directory is not writable
+            // Stays unchecked when the directory is not writable. The reading
+            // goes in so the file opens on where the battery stood, instead of
+            // waiting for the next percent to say anything at all.
+            log_.start(query_battery_state());
         }
         break;
 
