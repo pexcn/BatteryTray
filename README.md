@@ -17,7 +17,7 @@
 
 | 托盘图标 | 电池信息面板 |
 | :---: | :---: |
-| ![托盘图标](docs/tray.png) | ![电池信息面板](docs/panel.png) |
+| ![托盘图标1](docs/tray_battery.png)<br />![托盘图标2](docs/tray_tooltip.png) | ![电池信息面板](docs/info_panel.png) |
 
 ## 系统要求
 
