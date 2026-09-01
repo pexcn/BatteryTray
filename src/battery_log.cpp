@@ -81,11 +81,7 @@ bool append_bytes(const std::string& bytes) {
         return false;
     }
 
-    std::string payload;
-    if (open_error != ERROR_ALREADY_EXISTS) {
-        payload += "\xEF\xBB\xBF"; // without a BOM Notepad still reads a fresh log as ANSI
-    }
-    payload += bytes;
+    std::string payload = bytes;
 
     DWORD written = 0;
     return WriteFile(file.get(), payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr) &&
