@@ -207,12 +207,21 @@ LRESULT App::handle_message(UINT message, WPARAM wparam, LPARAM lparam) {
             // interval either way; the log does need one, since eight hours
             // missing from the file is exactly what its two lines are for.
             history_.discard_pending();
-            log_.note_suspend(query_battery_state());
+            // Same as refresh(): no reading, no line. A suspend line left out
+            // leaves the resume with nothing to pair against, which is what
+            // note_resume() already handles for a resume that follows no suspend.
+            const BatteryState state = query_battery_state();
+            if (state.valid) {
+                log_.note_suspend(state);
+            }
         } else if (wparam == PBT_APMRESUMEAUTOMATIC) {
             // Every resume delivers this one. PBT_APMRESUMESUSPEND comes only
             // when a person woke the machine, so handling both would write the
             // pair of lines twice for half of all wake-ups.
-            log_.note_resume(query_battery_state());
+            const BatteryState state = query_battery_state();
+            if (state.valid) {
+                log_.note_resume(state);
+            }
         }
         return TRUE;
 
@@ -285,6 +294,14 @@ void App::remove_tray_icon() {
 
 void App::refresh(bool force) {
     const BatteryState state = query_battery_state();
+    // A failed read is not a reading. Its defaults spell "100%, on battery", so
+    // passing it on would flash FL in the tray, clear the measured steps and
+    // write a step that never happened into the log. The next power event brings
+    // a real one; a forced refresh (startup, explorer restart, DPI change) simply
+    // leaves the icon as it was until then.
+    if (!state.valid) {
+        return;
+    }
     // Fed unconditionally: the ring itself ignores readings that did not move,
     // and it has to keep filling while the panel is closed - that is what makes
     // the elapsed steps there worth anything the moment it opens.
@@ -333,12 +350,17 @@ void App::refresh(bool force) {
 }
 
 void App::refresh_tooltip() {
+    const BatteryState state = query_battery_state();
+    if (!state.valid) {
+        return; // the tip already there is seconds stale; an invented one is wrong
+    }
+
     NOTIFYICONDATAW data{};
     data.cbSize = sizeof(data);
     data.hWnd = window_;
     data.uID = kTrayIconId;
     data.uFlags = NIF_TIP | NIF_SHOWTIP;
-    set_tooltip(data, query_battery_state());
+    set_tooltip(data, state);
     Shell_NotifyIconW(NIM_MODIFY, &data);
 }
 

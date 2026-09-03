@@ -3,36 +3,7 @@
 两轮代码审查（`/code-review` 最后一次提交 + 全项目）合并去重后的待修清单，按严重度排序。
 勾掉一条就删掉或标记，修完的改动记得同步 `docs/specification.md`。
 
-## 正确性
-
-- [ ] **日志写失败后的状态残留** — `src/battery_log.cpp:181`
-      写入失败时只置 `enabled_ = false`，没清 `last_percent_` / `pending_` / `marked_ms_`。
-      重新勾选日志后 `start() → observe()` 会写出一条横跨整个禁用期的假电量行并附上时长，
-      违反规格 2.8.1「开启日志后的第一格不写时长」。`stop()` 有清理，失败路径漏了。
-
-- [ ] **功率滑动平均不在电流反向时重置** — `src/info_panel.cpp:182`
-      窗口只在设备掉线（`device_.close()`）时重置。面板开着插上充电器，会把 -11 W 和 +30 W
-      平均成「充电功率 2.7 W」这种从未出现过的读数，持续约 6 秒；正负恰好抵消时
-      整个功率区连分隔线一起消失又出现。
-
-- [ ] **`GetSystemPowerStatus` 失败伪装成满电** — `src/battery_power.cpp:56`
-      失败返回 `{}`，即 100% + Discharging，和真实读数无法区分。一次瞬时失败会让托盘跳 `FL`、
-      清空「最近实测」环，并往日志里永久写下 `62% -> 100%` 和一条「使用电池」状态行。
-      需要一个「读数无效」的表示，让上层跳过这一拍而不是当作真值。
-
-- [ ] **字号拟合失败时位图与字体状态不一致** — `src/tray_icon.cpp:112`
-      `ensure_font()` 先更新 `icon_width_` / `width_` / `height_`，拟合失败却不更新
-      `font_` / `baseline_`。`render()` 只判 `!font_`，于是会用旧 DPI 的字号和越界基线
-      画进新尺寸位图，输出错位/裁切，而不是预期的「不出图标」。
-
-- [ ] **出厂日期在设备掉线后不清** — `src/info_panel.cpp:165`
-      `date_` 在 `device_.close()`、`hide()` 和采样失败路径上都不清。电池热拔后
-      `facts_` / `has_sample_` 都正确归零，唯独「出厂日期」一行留着旧值，且跨多次开关面板持续存在。
-
-- [ ] **窗口类重复注册导致面板永久失效** — `src/info_panel.cpp:78`
-      `ensure_window()` 每次都 `RegisterClassExW`。首次 `CreateWindowExW` 偶发失败后，
-      后续重试卡在 `ERROR_CLASS_ALREADY_EXISTS`，面板在本进程内再也起不来。
-      注册应只做一次（静态标志），或容忍 `ERROR_CLASS_ALREADY_EXISTS`。
+「正确性」一节的 6 条已全部修完并同步了规格（2.2 / 2.3 / 2.8 / 2.10.1 / 2.10.4），整节删去。
 
 ## 图标工具与光栅器
 

@@ -137,6 +137,14 @@ void BatteryLog::start(const BatteryState& state) {
     observe(state);
 }
 
+void BatteryLog::disable() noexcept {
+    enabled_ = false;
+    last_percent_ = -1;
+    marked_ms_ = 0;
+    pending_ = false;
+    asleep_ = false;
+}
+
 void BatteryLog::stop() {
     if (!enabled_) {
         return;
@@ -144,10 +152,7 @@ void BatteryLog::stop() {
     // The last reading observed: nobody hands one in on the way out, and the
     // battery cannot have moved since without the log hearing about it.
     write_line(percent_text(last_percent_), L"结束记录");
-    enabled_ = false;
-    last_percent_ = -1;
-    pending_ = false;
-    asleep_ = false;
+    disable();
 }
 
 void BatteryLog::observe(const BatteryState& state) {
@@ -177,15 +182,20 @@ void BatteryLog::observe(const BatteryState& state) {
         const std::wstring elapsed =
             measured ? format_duration_compact((now - marked_ms_) / 1000.0) : std::wstring();
         // A directory that turned read-only mid-run disables logging instead of
-        // retrying on every battery change.
-        enabled_ = write_line(step_text(last_percent_, state.percent), elapsed);
+        // retrying on every battery change, and takes the step in progress with
+        // it: what elapsed while the log was off is not a step anyone measured.
+        if (!write_line(step_text(last_percent_, state.percent), elapsed)) {
+            disable();
+            return;
+        }
         marked_ms_ = now;
         pending_ = true; // a percent transition is a legitimate starting point
     } else {
         pending_ = false; // whatever was in flight straddles the state change
     }
-    if (state_moved && enabled_) {
-        enabled_ = write_line(percent_text(state.percent), charge_state_text(state.charge));
+    if (state_moved && !write_line(percent_text(state.percent), charge_state_text(state.charge))) {
+        disable();
+        return;
     }
 
     last_percent_ = state.percent;
@@ -196,7 +206,10 @@ void BatteryLog::note_suspend(const BatteryState& state) {
     if (!enabled_) {
         return;
     }
-    enabled_ = write_line(percent_text(state.percent), L"进入睡眠");
+    if (!write_line(percent_text(state.percent), L"进入睡眠")) {
+        disable();
+        return;
+    }
     suspend_ms_ = GetTickCount64();
     suspend_percent_ = state.percent;
     pending_ = false; // the interval in progress is about to span the sleep
@@ -221,7 +234,10 @@ void BatteryLog::note_resume(const BatteryState& state) {
     } else {
         event += L"电量未变";
     }
-    enabled_ = write_line(percent_text(state.percent), event);
+    if (!write_line(percent_text(state.percent), event)) {
+        disable();
+        return;
+    }
 
     // Resync instead of letting observe() see the jump: what the sleep cost is
     // on the line above, and a "100 -> 94%" under it would claim a step that

@@ -75,7 +75,10 @@ bool InfoPanel::ensure_window() {
     window_class.hInstance = instance_;
     window_class.lpszClassName = kPanelClassName;
     window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    if (!RegisterClassExW(&window_class)) {
+    // Tolerated rather than guarded by a flag: this runs again whenever the
+    // first CreateWindowExW failed, and treating the class left behind by that
+    // attempt as an error would keep the panel down for the rest of the process.
+    if (!RegisterClassExW(&window_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
         return false;
     }
 
@@ -129,8 +132,7 @@ void InfoPanel::show() {
     dpi_ = GetDpiForWindow(window_);
     ensure_fonts();
 
-    rate_count_ = 0; // the window from the last time the panel was up is stale
-    rate_index_ = 0;
+    reset_rate_window(); // whatever was in it dates from the last time the panel was up
     sample();
     relayout();
 
@@ -156,11 +158,21 @@ void InfoPanel::hide() {
     visible_ = false;
     hidden_ms_ = GetTickCount64();
     device_.close();
+    date_ = {}; // read from the device, so it dies with the handle
     has_sample_ = false;
 }
 
+void InfoPanel::reset_rate_window() noexcept {
+    rate_count_ = 0;
+    rate_index_ = 0;
+    rate_direction_ = 0;
+}
+
 void InfoPanel::sample() {
-    state_ = query_battery_state();
+    const BatteryState state = query_battery_state();
+    if (state.valid) {
+        state_ = state; // a failed read is not a reading; the panel keeps the last one
+    }
 
     if (!device_ && device_.open()) {
         // Static fields are read once per opening, never in the tick.
@@ -171,10 +183,23 @@ void InfoPanel::sample() {
     if (!device_.read_sample(fresh)) {
         // The tag dies with a hot swap, and a stale handle never recovers.
         device_.close();
+        date_ = {};
         has_sample_ = false;
-        rate_count_ = 0;
-        rate_index_ = 0;
+        reset_rate_window();
         return;
+    }
+
+    // Plugging the charger in with the panel open otherwise averages -11 W
+    // against +30 W into a charge rate that never happened, and a window that
+    // happens to cancel out takes the whole power section off screen for six
+    // seconds. A zero is not a direction of its own -- it is either a real lull
+    // or an unknown rate -- so only a reversal starts the window over.
+    const int direction = fresh.rate_mw > 0 ? 1 : (fresh.rate_mw < 0 ? -1 : 0);
+    if (direction != 0) {
+        if (rate_direction_ != 0 && direction != rate_direction_) {
+            reset_rate_window();
+        }
+        rate_direction_ = direction;
     }
 
     sample_ = fresh;

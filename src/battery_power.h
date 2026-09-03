@@ -24,6 +24,10 @@ const wchar_t* charge_state_text(ChargeState charge);
 struct BatteryState {
     int percent = 100; // 255 ("unknown", what a machine with no battery reports) becomes 100
     ChargeState charge = ChargeState::Discharging;
+    // False when the call itself failed. The other two fields then hold defaults
+    // that read exactly like "full, on battery", which is a reading nobody took;
+    // callers skip the tick instead of believing it.
+    bool valid = true;
 };
 
 BatteryState query_battery_state();

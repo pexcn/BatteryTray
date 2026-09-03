@@ -52,10 +52,11 @@ const wchar_t* charge_state_text(ChargeState charge) {
 
 BatteryState query_battery_state() {
     SYSTEM_POWER_STATUS status{};
-    if (!GetSystemPowerStatus(&status)) {
-        return {};
-    }
     BatteryState state;
+    if (!GetSystemPowerStatus(&status)) {
+        state.valid = false;
+        return state;
+    }
     // Like the original, treat "unknown" as full rather than showing nothing.
     state.percent = status.BatteryLifePercent == 255 ? 100 : static_cast<int>(status.BatteryLifePercent);
     // Charging comes from BatteryFlag, not from ACLineStatus: the line stays

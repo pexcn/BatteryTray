@@ -34,6 +34,12 @@ public:
     void note_resume(const BatteryState& state);
 
 private:
+    // The one way logging stops, whether the user unchecked it or a write
+    // failed: the step in progress and the sleep in progress belong to a session
+    // that has ended, and leaving them behind would let the next start() measure
+    // a step across the whole disabled stretch.
+    void disable() noexcept;
+
     bool enabled_ = false;
 
     int last_percent_ = -1; // negative until the first reading is observed

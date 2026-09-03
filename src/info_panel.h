@@ -59,6 +59,7 @@ private:
     void hide();
 
     void sample();
+    void reset_rate_window() noexcept;
     void build_rows();
     [[nodiscard]] int scale(int dip) const { return MulDiv(dip, static_cast<int>(dpi_), 96); }
     [[nodiscard]] int row_height(RowStyle style) const;
@@ -97,6 +98,10 @@ private:
     long rate_window_[kRateWindow]{};
     int rate_index_ = 0;
     int rate_count_ = 0;
+    // Which way the samples in the window flow: +1 charging, -1 discharging, 0
+    // while nothing but zeroes has been seen. Averaging across a reversal would
+    // produce a wattage that never occurred, so the window starts over instead.
+    int rate_direction_ = 0;
     long rate_mw_ = 0;
 
     std::vector<Row> rows_;

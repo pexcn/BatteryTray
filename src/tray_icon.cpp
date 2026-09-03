@@ -66,6 +66,14 @@ void IconRenderer::ensure_font(UINT dpi) {
         return;
     }
 
+    // Dropped before the sizes move, because the fit below can come up empty:
+    // render() decides there is nothing to draw by looking at font_ alone, and
+    // an old one left in place would be drawn at the previous DPI's em, with its
+    // baseline, into a bitmap of the new size. A failed fit is retried on the
+    // next render, which is the only work left on that path anyway.
+    font_.reset();
+    baseline_ = 0;
+
     // The tray scales its icons with DPI, so the em size has to follow instead
     // of being a constant tuned at 100%.
     icon_width_ = GetSystemMetricsForDpi(SM_CXSMICON, dpi);
