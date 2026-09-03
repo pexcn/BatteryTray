@@ -481,7 +481,7 @@ CPU/内存占用、不含调试信息**的原生实现。
    | `src/win32.h` | Windows 头文件的统一配置（`UNICODE`、`WINVER` 等） |
    | `src/win32_raii.h` | GDI / 内核句柄的 RAII 包装 |
    | `src/BatteryTray.rc` | manifest、图标与 `VERSIONINFO` 的资源脚本 |
-   | `tools/make_icon.ps1` | 设计期生成 exe 的文件图标 `src/BatteryTray.ico` |
+   | `tools/svg2ico.pl` | 设计期把 `tools/icon_*.svg` 光栅化成 exe 的文件图标 `src/BatteryTray.ico` |
 
    增删或合并文件时同步改这张表。
 2. 一份应用程序 manifest（DPI 感知、`requestedExecutionLevel` 为 `asInvoker`）及其嵌入方式说明。
@@ -494,17 +494,19 @@ CPU/内存占用、不含调试信息**的原生实现。
    否则 rc.exe 按系统 ANSI 代码页解析，在非中文 Windows 上编出乱码。版本号见 [7.1](#71-版本号)。
 7. **exe 图标资源**（`.rc` 里的 `1 ICON "BatteryTray.ico"`）：资源管理器、任务管理器与快捷方式上显示的
    文件图标。与托盘图标无关 —— 托盘那个仍是运行时按 [2.3](#23-托盘图标内容) 画出来的数字。
-   - **图形来自 Segoe Fluent Icons 的 `BatteryCharging7`（`U+E861`）字形** —— 约七成电量、带充电标记，
-     与截图里 Windows 自己的充电电池同源，视觉上和系统一致。取 7 档而非满格，是因为满格那张图整条都是实心，
-     少了「电量计」的辨识度。充电系列的 0–8 档（`U+E85A`–`U+E862`）在 Segoe MDL2 Assets 上码位完全相同
-     （只有 9、10 两档两套字体不一致），所以只装了 MDL2 的 Windows 10 上也能渲染出相同结果。
-   - **由 `tools/make_icon.ps1` 在设计期渲染一次，产物 `src/BatteryTray.ico` 提交进仓库**，构建只消费不生成。
-     不放进 `build.bat` 的理由：`rc.exe` 要的就是成品文件，而 CI 的 `windows-latest` 是 Windows Server
-     镜像，只有 Segoe MDL2 Assets、没有 Segoe Fluent Icons，构建期渲染会让 CI 与本地产出不同的东西。
-     改字形、配色或尺寸集时重跑脚本并把 `.ico` 一起提交。
-   - **尺寸集 16 / 24 / 32 / 48 / 256**：前四档用未压缩的 32bpp BMP 帧，256 用 PNG 帧（PNG 压缩只在
-     256×256 上被各版本 shell 普遍认得）。20 / 64 / 128 略去 —— shell 的各处界面都会就近挑一档缩放，
-     而每一帧都是实打实压在 exe 体积上的，资源段不参与 `/OPT:REF` 的冗余消除。
+   - **图形来自 fluentui-system-icons（MIT）的 Battery Saver 字形** —— 横置电池加一片叶子，
+     与 Windows 自己的省电图标同源，视觉上和系统一致。仓库里存这套图形的两个设计尺寸
+     `tools/icon_20.svg` 与 `tools/icon_24.svg`：Fluent 的每档尺寸各自画在自己的像素网格上，
+     不是同一张图缩放出来的，所以不能只留一个。
+   - **由 `tools/svg2ico.pl` 在设计期渲染一次，产物 `src/BatteryTray.ico` 提交进仓库**，构建只消费不生成。
+     脚本是只用核心模块的 Perl（解析 path、扫描线填充、打包 `.ico`），不引入第三方依赖，也不进 `build.bat`
+     —— `rc.exe` 要的就是成品文件，构建期再渲染一遍只会多一份工具链依赖和一次「CI 与本地产出不同」的风险。
+     完整命令记在脚本头部，重跑逐字节可复现；改图形、配色或尺寸集时重跑并把 `.ico` 一起提交。
+   - **尺寸集 16 / 20 / 24 / 32 / 48 / 256**，共六帧：20 的设计喂 16、20 两帧，24 的设计喂 24 / 32 / 48 /
+     256 四帧。前五档用未压缩的 32bpp BMP 帧，256 用 PNG 帧（PNG 压缩只在 256×256 上被各版本 shell 普遍
+     认得）。留 20 是因为手上正好有为这个像素网格画的设计，让 shell 从 16 或 24 缩过去反而糊；64 / 128
+     略去 —— 没有对应设计，shell 各处界面都会就近挑一档缩放，而每一帧都是实打实压在 exe 体积上的，
+     资源段不参与 `/OPT:REF` 的冗余消除。
    - **配色是单色 `#107C10` + 透明背景**，不跟随系统主题：文件图标会同时出现在浅色的资源管理器和深色的
      任务管理器里，托盘那套「浅色主题黑字、深色主题白字」搬过来必然有一边看不见，图标本身得自带对比度。
    - 抗锯齿同样用灰度而非 ClearType（理由同 [2.3](#23-托盘图标内容)）。但与托盘图标不同，`.ico` 帧里存的是

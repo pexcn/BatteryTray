@@ -19,8 +19,8 @@
 
 // The tray icon is drawn at runtime; this one is what Explorer, the task
 // manager and shortcuts show for the .exe itself. It is committed rather than
-// generated at build time because tools/make_icon.ps1 renders it from a symbol
-// font the CI image does not have (see docs/specification.md 4.7).
+// generated at build time because rc.exe wants the finished file anyway; see
+// tools/svg2ico.pl for how to regenerate it (docs/specification.md 4.7).
 1 ICON "BatteryTray.ico"
 
 VS_VERSION_INFO VERSIONINFO

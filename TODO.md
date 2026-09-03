@@ -3,22 +3,9 @@
 两轮代码审查（`/code-review` 最后一次提交 + 全项目）合并去重后的待修清单，按严重度排序。
 勾掉一条就删掉或标记，修完的改动记得同步 `docs/specification.md`。
 
-已修完并删去的两节：「正确性」6 条（同步了规格 2.2 / 2.3 / 2.8 / 2.10.1 / 2.10.4）、
-「图标工具与光栅器」6 条（只动 `tools/svg2ico.pl` 与随之重新生成的 `src/BatteryTray.ico`；
-规格 4.7 那段仍待定夺，见下）。
-
-## 规格与代码不一致（按 AGENTS.md：需要先定夺改哪边）
-
-- [ ] **规格 4.7 节仍描述已删除的图标管线** — `docs/specification.md:467`、`:482`、`:484-486`
-      以及 `src/BatteryTray.rc:22`
-      都还指向 56eaf67 已删除的 `tools/make_icon.ps1` 和 Segoe Fluent Icons 的 `BatteryCharging7`，
-      `.rc` 注释还留着「CI 镜像没有那个符号字体」这个已不存在的理由。
-      实际是 Perl 的 `svg2ico.pl` + fluentui-system-icons 的 Battery Saver SVG。
-
-- [ ] **图标尺寸集与规格冲突** — `docs/specification.md:488-490` vs `src/BatteryTray.ico`
-      规格明确定为 16/24/32/48/256 并专门论证过「20 / 64 / 128 略去」，
-      实际 `.ico` 有 6 帧、含 20×20（`icon_20.svg` 就是喂它的，文件 23090 字节）。
-      要么帧错要么规格错，需要定夺。
+已修完并删去的三节：「正确性」6 条（同步了规格 2.2 / 2.3 / 2.8 / 2.10.1 / 2.10.4）、
+「图标工具与光栅器」6 条（只动 `tools/svg2ico.pl` 与随之重新生成的 `src/BatteryTray.ico`）、
+「规格与代码不一致」2 条（以图标本身为准，改的是规格 4.7 与 `.rc` 注释）。
 
 ## 次要
 
