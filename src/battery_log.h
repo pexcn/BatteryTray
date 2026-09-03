@@ -8,11 +8,11 @@ namespace bt {
 // synchronous open-append-close: changes arrive minutes apart, so a background
 // thread would only buy a shutdown race in exchange for nothing.
 //
-// Two shapes of line (specification 2.8): a state line when the charge state
-// moves, and a step line for every percent that elapses, carrying how long it
-// took. The state used to sit on every line instead, which turned a screenful of
-// readings into a screenful of the same four characters with the one number that
-// was actually moving buried among them.
+// Two shapes of line: a state line when the charge state moves, and a step line
+// for every percent that elapses, carrying how long it took. The state used to
+// sit on every line instead, which turned a screenful of readings into a
+// screenful of the same four characters with the one number that was actually
+// moving buried among them.
 class BatteryLog {
 public:
     [[nodiscard]] bool enabled() const noexcept { return enabled_; }

@@ -16,8 +16,8 @@ struct BatteryStep {
 };
 
 // A fixed ring of the most recent steps, newest first. Memory only - it is an
-// observation window over the current session, and nothing this program keeps
-// may outlive the process (see docs/specification.md 1.5).
+// observation window over the current session, and the program writes nothing
+// but its battery log, so there is nowhere to persist it to.
 class BatteryHistory {
 public:
     // Fed every reading the tray takes; only a moved percentage records a step.

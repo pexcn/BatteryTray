@@ -96,9 +96,9 @@ void InfoPanel::ensure_fonts() {
     }
 
     // lfMessageFont, not the tray icon's hardcoded Segoe UI: the reason for that
-    // one is embedded bitmap strikes at tray ppem (specification 2.3), which do
-    // not apply at body size, and these labels are Chinese - the system UI font
-    // is the right face for them.
+    // one is embedded bitmap strikes at tray ppem, which do not apply at body
+    // size, and these labels are Chinese - the system UI font is the right face
+    // for them.
     NONCLIENTMETRICSW metrics{};
     metrics.cbSize = sizeof(metrics);
     if (!SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0, dpi_)) {

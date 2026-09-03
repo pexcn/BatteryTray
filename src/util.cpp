@@ -65,7 +65,7 @@ void apply_menu_theme(bool light_theme) {
     // SetPreferredAppMode and 136 is FlushMenuThemes, which makes user32 drop
     // the menu theme it has already cached. Ordinal 135 was AllowDarkModeForApp
     // with a different signature before build 18362, but the target floor here
-    // is 19044 (specification 1.2), so there is only one meaning to hit.
+    // is 19044 (Windows 10 LTSC 2021), so there is only one meaning to hit.
     enum PreferredAppMode { Default, AllowDark, ForceDark, ForceLight };
     using SetPreferredAppModeFn = PreferredAppMode(WINAPI*)(PreferredAppMode);
     using FlushMenuThemesFn = void(WINAPI*)();
