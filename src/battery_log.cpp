@@ -18,12 +18,15 @@ constexpr unsigned long long kMaxLogBytes = 512 * 1024;
 // Width of "100% -> 99%", the widest reading there is.
 constexpr size_t kReadingColumns = 11;
 
-std::wstring log_path() {
-    const std::wstring directory = module_directory();
-    if (directory.empty()) {
-        return {};
-    }
-    return directory + L"\\BatteryTray.log";
+// Computed once: the executable cannot move under a running process, and every
+// line written asks for this, which otherwise means walking the module path and
+// a handful of allocations per write.
+const std::wstring& log_path() {
+    static const std::wstring path = [] {
+        const std::wstring directory = module_directory();
+        return directory.empty() ? std::wstring() : directory + L"\\BatteryTray.log";
+    }();
+    return path;
 }
 
 std::wstring timestamp() {
@@ -54,7 +57,7 @@ std::string to_utf8(const std::wstring& text) {
 }
 
 unsigned long long log_size() {
-    const std::wstring path = log_path();
+    const std::wstring& path = log_path();
     WIN32_FILE_ATTRIBUTE_DATA attributes{};
     if (path.empty() || !GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &attributes)) {
         return 0; // a missing file is an empty one as far as every caller cares
@@ -63,7 +66,7 @@ unsigned long long log_size() {
 }
 
 bool append_bytes(const std::string& bytes) {
-    const std::wstring path = log_path();
+    const std::wstring& path = log_path();
     if (path.empty() || bytes.empty()) {
         return false;
     }
@@ -75,17 +78,14 @@ bool append_bytes(const std::string& bytes) {
     const HANDLE raw = CreateFileW(path.c_str(), FILE_APPEND_DATA,
                                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                                    OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    const DWORD open_error = GetLastError(); // OPEN_ALWAYS reports ERROR_ALREADY_EXISTS on reuse
     const unique_file file(raw);
     if (!file) {
         return false;
     }
 
-    std::string payload = bytes;
-
     DWORD written = 0;
-    return WriteFile(file.get(), payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr) &&
-           written == payload.size();
+    return WriteFile(file.get(), bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) &&
+           written == bytes.size();
 }
 
 std::wstring percent_text(int percent) {

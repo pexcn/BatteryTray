@@ -11,7 +11,7 @@ namespace bt {
 
 class BatteryHistory;
 
-// The flyout a double click on the tray icon raises. It carries what a tooltip
+// The flyout a click on the tray icon raises. It carries what a tooltip
 // cannot: the pack's health, the last few percent steps that actually elapsed,
 // and a reading that keeps refreshing while someone watches it - which is the
 // point of a window that stays put instead of vanishing with the pointer.
