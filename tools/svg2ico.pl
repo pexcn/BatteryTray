@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
-# Builds ui/StatMeter.ico from the SVGs beside this script. It parses the path
-# data, rasterises it with a nonzero-winding scanline fill, and packs the
+# Builds src/BatteryTray.ico from the SVGs beside this script. It parses the
+# path data, rasterises it with a nonzero-winding scanline fill, and packs the
 # result as an .ico. Nothing in the build calls it: the .ico is committed, and
 # this exists so the next person can regenerate it instead of guessing how it
 # was made.
@@ -12,37 +12,56 @@
 #
 # Usage:  svg2ico.pl OUT.ico RRGGBB SIZE=FILE.svg [SIZE=FILE.svg ...]
 #
-# The command that produced the icon in the tree, run from the repo root:
+# The command that produced the committed icon, run from the repo root. It
+# reproduces src/BatteryTray.ico byte for byte:
 #
-#   perl tools/svg2ico.pl ui/StatMeter.ico 0078D4 \
-#        16=tools/icon_16.svg 20=tools/icon_20.svg 24=tools/icon_24.svg \
-#        32=tools/icon_32.svg 48=tools/icon_32.svg 64=tools/icon_32.svg \
-#        256=tools/icon_32.svg
+#   perl tools/svg2ico.pl src/BatteryTray.ico 107C10 \
+#        16=tools/icon_20.svg 20=tools/icon_20.svg \
+#        24=tools/icon_24.svg 32=tools/icon_24.svg \
+#        48=tools/icon_24.svg 256=tools/icon_24.svg
 #
-# Fluent ships a separate design per size up to 32 (the small ones are drawn on
-# their own pixel grid), so each of those gets its own file; 48 and up are the
-# 32 design scaled, since there is no larger source.
+# The sources are the fluentui-system-icons Battery Saver glyph at its 20 and 24
+# designs, the only two sizes this repo carries. Fluent draws the small sizes on
+# their own pixel grid, so the 20 design feeds the 16 and 20 frames and the 24
+# design feeds 24 and everything above it; there is no separate 16 or 32 design
+# here, and nothing above 24 to scale down from.
 #
 # The colour is an argument rather than the #212121 the assets carry, because
 # the glyph has no plate and sits straight on the system background: #212121
 # measures 1.01:1 against the dark-mode #202020, which is not dim but absent.
-# Clearing 3:1 on both white and #202020 confines the colour to a relative
-# luminance between 0.143 and 0.30. #0078D4 sits at 0.18 — 4.53:1 and 3.60:1 —
-# and is the system's own accent. Any replacement has to survive the same two
-# measurements; a colour picked on a white background alone will not.
+# The committed 107C10 is the single colour specification 4.7 settles on, and it
+# measures 5.37:1 on white and 3.04:1 on #202020. Any replacement has to clear
+# 3:1 on both; a colour picked on a white background alone will not.
 use strict; use warnings;
 use IO::Compress::Deflate qw(deflate);
 
 my $SS = 16;   # sub-scanlines per pixel row; x coverage is analytic
 
+# Squared flattening tolerance, in *output* pixels: the curve is allowed to run
+# 0.141 px off the chord it is replaced with. Flattening happens in viewBox
+# units and the scaling comes after, so the caller converts this to viewBox
+# units for the size being rendered -- a fixed tolerance there is ten times too
+# coarse on the 256 frame, which is drawn from the 24 design, and its rounded
+# corners come out as visible facets (measured: 154/255 worst-case alpha error
+# against a tightly flattened reference, against 15/255 with this).
+my $FLAT2 = 0.02;
+
 # ---------- SVG path -> polygon edge list ----------
 sub flatten_cubic {
-    my ($pts, $x0,$y0,$x1,$y1,$x2,$y2,$x3,$y3, $depth) = @_;
+    my ($pts, $tol2, $x0,$y0,$x1,$y1,$x2,$y2,$x3,$y3, $depth) = @_;
     # flat enough? distance of control points from the chord
     my $dx = $x3-$x0; my $dy = $y3-$y0;
+    my $chord2 = $dx*$dx + $dy*$dy;
     my $d1 = abs(($x1-$x3)*$dy - ($y1-$y3)*$dx);
     my $d2 = abs(($x2-$x3)*$dy - ($y2-$y3)*$dx);
-    if ($depth > 16 || ($d1+$d2)**2 <= 0.02 * ($dx*$dx + $dy*$dy)) {
+    # A curve that returns to where it started has no chord to measure against,
+    # and the test above it would read 0 <= tol * 0 and swallow the whole loop.
+    # Such a segment is flat only when its control points sit on the start point
+    # too; otherwise it has to be split until the halves have a chord again.
+    my $flat = $chord2 > 0
+        ? ($d1+$d2)**2 <= $tol2 * $chord2
+        : ($x1-$x0)**2 + ($y1-$y0)**2 <= $tol2 && ($x2-$x0)**2 + ($y2-$y0)**2 <= $tol2;
+    if ($depth > 16 || $flat) {
         push @$pts, [$x3,$y3]; return;
     }
     my ($x01,$y01) = (($x0+$x1)/2, ($y0+$y1)/2);
@@ -51,12 +70,12 @@ sub flatten_cubic {
     my ($xa,$ya)   = (($x01+$x12)/2, ($y01+$y12)/2);
     my ($xb,$yb)   = (($x12+$x23)/2, ($y12+$y23)/2);
     my ($xm,$ym)   = (($xa+$xb)/2, ($ya+$yb)/2);
-    flatten_cubic($pts,$x0,$y0,$x01,$y01,$xa,$ya,$xm,$ym,$depth+1);
-    flatten_cubic($pts,$xm,$ym,$xb,$yb,$x23,$y23,$x3,$y3,$depth+1);
+    flatten_cubic($pts,$tol2,$x0,$y0,$x01,$y01,$xa,$ya,$xm,$ym,$depth+1);
+    flatten_cubic($pts,$tol2,$xm,$ym,$xb,$yb,$x23,$y23,$x3,$y3,$depth+1);
 }
 
 sub parse_path {
-    my ($d) = @_;
+    my ($d, $tol2) = @_;
     my @tok;
     while ($d =~ /\G\s*(?:([A-Za-z])|(-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)|,)/gc) {
         push @tok, defined $1 ? $1 : $2;
@@ -74,7 +93,11 @@ sub parse_path {
         my $c = uc $cmd;
         if ($c eq 'Z') {
             push @subpaths, [@cur] if @cur > 2;
-            @cur = (); ($x,$y) = ($sx,$sy); $prev = $c; next;
+            # A draw command may follow Z directly, and it starts a new subpath
+            # from the point Z returned to -- so that point has to stay in the
+            # vertex list, not just in ($x,$y). A following M throws the lone
+            # point away again, since a subpath needs three to enclose anything.
+            @cur = ([$sx,$sy]); ($x,$y) = ($sx,$sy); $prev = $c; next;
         }
         if ($c eq 'M') {
             push @subpaths, [@cur] if @cur > 2;
@@ -100,7 +123,7 @@ sub parse_path {
             my $x2 = $num->(); my $y2 = $num->();
             my $x3 = $num->(); my $y3 = $num->();
             if ($rel) { ($x2,$y2,$x3,$y3) = ($x+$x2,$y+$y2,$x+$x3,$y+$y3) }
-            flatten_cubic(\@cur, $x,$y,$x1,$y1,$x2,$y2,$x3,$y3, 0);
+            flatten_cubic(\@cur, $tol2, $x,$y,$x1,$y1,$x2,$y2,$x3,$y3, 0);
             ($px,$py) = ($x2,$y2); ($x,$y) = ($x3,$y3);
         } elsif ($c eq 'Q' || $c eq 'T') {
             my ($qx,$qy);
@@ -112,7 +135,7 @@ sub parse_path {
             }
             my $x3 = $num->(); my $y3 = $num->();
             ($x3,$y3) = ($x+$x3,$y+$y3) if $rel;
-            flatten_cubic(\@cur, $x,$y, $x+2/3*($qx-$x), $y+2/3*($qy-$y),
+            flatten_cubic(\@cur, $tol2, $x,$y, $x+2/3*($qx-$x), $y+2/3*($qy-$y),
                           $x3+2/3*($qx-$x3), $y3+2/3*($qy-$y3), $x3,$y3, 0);
             ($px,$py) = ($qx,$qy); ($x,$y) = ($x3,$y3);
         } else {
@@ -124,14 +147,34 @@ sub parse_path {
     return \@subpaths;
 }
 
+# Everything this script understands is a filled <path> with nonzero winding.
+# Anything else is rejected rather than skipped: an unsupported path command
+# already dies, and a file that quietly loses a transform or half its shapes
+# would ship a wrong icon instead of failing a build nobody runs. Plain <g>
+# nesting is fine -- the paths union into one silhouette either way.
+my @UNSUPPORTED = (
+    [ qr/\btransform\s*=/                                             => 'transform' ],
+    [ qr/\b(?:clip-path|mask)\s*=/                                    => 'clipping' ],
+    [ qr/\bfill-rule\s*=\s*"(?!nonzero")/                             => 'a fill-rule other than nonzero' ],
+    [ qr{<(?:use|rect|circle|ellipse|line|polyline|polygon|text|image)[\s/>]}
+                                                                     => 'a shape other than <path>' ],
+);
+
 sub read_svg {
-    my ($file) = @_;
+    my ($file, $size) = @_;
     open my $fh, '<', $file or die "$file: $!\n";
     local $/; my $svg = <$fh>; close $fh;
     my ($vb) = $svg =~ /viewBox\s*=\s*"([^"]+)"/ or die "$file: no viewBox\n";
     my @vb = split /[\s,]+/, $vb;
+    for my $u (@UNSUPPORTED) {
+        die "$file: $u->[1] is not supported; flatten it into plain <path> data first\n"
+            if $svg =~ $u->[0];
+    }
+    # Curves are flattened here but scaled in rasterize(), so the tolerance has
+    # to come back from output pixels to viewBox units for this size.
+    my $tol2 = $FLAT2 * ($vb[2] / $size)**2;
     my @paths;
-    while ($svg =~ /<path\b[^>]*\bd\s*=\s*"([^"]+)"/g) { push @paths, parse_path($1) }
+    while ($svg =~ /<path\b[^>]*\bd\s*=\s*"([^"]+)"/g) { push @paths, parse_path($1, $tol2) }
     die "$file: no <path>\n" unless @paths;
     # Fluent icons are one filled shape; several <path> elements just union.
     return (\@vb, [map { @$_ } @paths]);
@@ -253,7 +296,7 @@ my ($R,$G,$B) = map { hex } $hex =~ /^#?(..)(..)(..)$/ or die "bad colour '$hex'
 my (@imgs);
 for my $arg (@ARGV) {
     my ($size, $svg) = $arg =~ /^(\d+)=(.+)$/ or die "bad argument '$arg'\n";
-    my ($vb, $subpaths) = read_svg($svg);
+    my ($vb, $subpaths) = read_svg($svg, $size);
     my $cov = rasterize($subpaths, $vb, $size);
     # PNG only for 256: the size Windows documents it for, and where a DIB
     # would cost 256 KB. Everything below stays a DIB.
